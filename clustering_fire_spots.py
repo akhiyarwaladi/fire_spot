@@ -30,8 +30,8 @@ sns.set_style('whitegrid')
 # =============================================================================
 
 DATA_SOURCE = 'data/raw/fire_nrt_J2V-C2_669817.csv'  # Semua Indonesia
-# DATA_SOURCE = 'data/filtered/method_1_bounding_box/Riau.csv'
-# DATA_SOURCE = 'data/filtered/method_2_geojson/Riau.csv'
+# DATA_SOURCE = 'data/filtered/method_1_bounding_box/Jambi.csv'
+# DATA_SOURCE = 'data/filtered/method_2_geojson/Jambi.csv'
 
 NUM_CLUSTERS = 5
 SAMPLE_SIZE = 10000  # None untuk pakai semua data

@@ -536,61 +536,7 @@ def generate_filtered_datasets(regions_to_filter=None, method='bounding_box'):
 
     return results
 
-# =============================================================================
-# MODE INTERAKTIF
-# =============================================================================
-
-def interactive_mode():
-    """Mode interaktif"""
-
-    print("="*80)
-    print("FILTER DATA FIRE SPOTS PER WILAYAH")
-    print("="*80)
-    print()
-
-    print("Pilihan:")
-    print("  1. Filter SEMUA wilayah (35 provinsi)")
-    print("  2. Filter wilayah SUMATERA saja (10 provinsi)")
-    print("  3. Filter wilayah KALIMANTAN saja (5 provinsi)")
-    print("  4. Custom")
-    print()
-
-    choice = input("Pilihan (1/2/3/4): ").strip()
-
-    if choice == '1':
-        regions = None
-        print("\n✓ Semua wilayah Indonesia (35 provinsi)")
-    elif choice == '2':
-        regions = ['Aceh', 'Sumatera_Utara', 'Riau', 'Kepulauan_Riau',
-                   'Sumatera_Barat', 'Jambi', 'Sumatera_Selatan',
-                   'Bengkulu', 'Lampung', 'Bangka_Belitung']
-        print(f"\n✓ Wilayah Sumatera ({len(regions)} provinsi)")
-    elif choice == '3':
-        regions = ['Kalimantan_Barat', 'Kalimantan_Tengah', 'Kalimantan_Selatan',
-                   'Kalimantan_Timur', 'Kalimantan_Utara']
-        print(f"\n✓ Wilayah Kalimantan ({len(regions)} provinsi)")
-    elif choice == '4':
-        print("\nWilayah tersedia:")
-        for i, region in enumerate(list(INDONESIA_REGIONS.keys()), 1):
-            print(f"  {i:2d}. {region.replace('_', ' ')}")
-        print()
-        regions_input = input("Masukkan nama wilayah (pisah koma): ").strip()
-        regions = [r.strip().replace(' ', '_') for r in regions_input.split(',')]
-        print(f"\n✓ {len(regions)} wilayah dipilih")
-    else:
-        print("\n❌ Invalid. Default: Sumatera")
-        regions = ['Aceh', 'Sumatera_Utara', 'Riau', 'Kepulauan_Riau',
-                   'Sumatera_Barat', 'Jambi', 'Sumatera_Selatan',
-                   'Bengkulu', 'Lampung', 'Bangka_Belitung']
-
-    print()
-    confirm = input("Lanjutkan? (y/n): ").strip().lower()
-
-    if confirm == 'y':
-        return generate_filtered_datasets(regions_to_filter=regions)
-    else:
-        print("\n❌ Dibatalkan")
-        return None
+# Interactive mode removed for simplicity - use command line flags instead
 
 # =============================================================================
 # MAIN
@@ -628,10 +574,10 @@ if __name__ == '__main__':
             print("  python filter_by_city_guide.py [options] [--geojson]")
             print()
             print("Options:")
-            print("  (none)                  # Interactive mode")
             print("  --all                   # All provinces")
-            print("  --sumatera              # Sumatera only")
-            print("  --kalimantan            # Kalimantan only")
+            print("  --sumatera              # Sumatera only (10 provinces)")
+            print("  --kalimantan            # Kalimantan only (5 provinces)")
+            print("  --help                  # Show this help message")
             print()
             print("Methods:")
             print("  --geojson               # Use GeoJSON polygon (more accurate)")
@@ -643,6 +589,15 @@ if __name__ == '__main__':
             print("  python filter_by_city_guide.py --all --geojson")
             print()
         else:
-            print("❌ Invalid. Use --help")
+            print("❌ Invalid option. Use --help for usage information")
     else:
-        interactive_mode()
+        # Default: show help
+        print("="*80)
+        print("FILTER FIRE SPOTS BY REGION")
+        print("="*80)
+        print("\n⚠️  No options specified. Use one of:")
+        print("  python filter_by_city_guide.py --sumatera")
+        print("  python filter_by_city_guide.py --kalimantan")
+        print("  python filter_by_city_guide.py --all")
+        print("  python filter_by_city_guide.py --help")
+        print("\nAdd --geojson for more accurate polygon-based filtering")
