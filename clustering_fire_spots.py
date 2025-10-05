@@ -18,7 +18,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 import folium
-from folium.plugins import HeatMap
+from folium.plugins import HeatMap, MarkerCluster, MiniMap, Fullscreen
 import warnings
 import os
 
@@ -34,7 +34,7 @@ DATA_SOURCE = 'data/raw/fire_nrt_J2V-C2_669817.csv'  # Semua Indonesia
 # DATA_SOURCE = 'data/filtered/method_2_geojson/Jambi.csv'
 
 NUM_CLUSTERS = 5
-SAMPLE_SIZE = 10000  # None untuk pakai semua data
+SAMPLE_SIZE = None  # None untuk pakai semua data
 FEATURES = ['latitude', 'longitude', 'brightness', 'frp']
 
 # =============================================================================
@@ -215,51 +215,293 @@ def plot_clusters(df, output_dir):
     plt.close()
     print("✓ Brightness vs FRP plot saved")
 
-def create_maps(df, output_dir):
-    """Create interactive Folium maps"""
-    print("\n🗺️  STEP 8: Interactive Maps")
+def create_simple_maps(df, output_dir):
+    """Create 2 simple interactive maps"""
+    print("\n🗺️  STEP 8a: Simple Maps")
     print("-" * 80)
 
     center_lat = df['latitude'].mean()
     center_lon = df['longitude'].mean()
-    colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+    colors = ['red', 'blue', 'green', 'purple', 'orange',
+              'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen']
     n_clusters = df['cluster'].nunique()
 
-    # Clusters map
-    map_clusters = folium.Map(location=[center_lat, center_lon], zoom_start=5)
+    # Simple Clusters Map
+    map_simple_clusters = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=5,
+        tiles='OpenStreetMap'
+    )
 
     for i in range(n_clusters):
         cluster_data = df[df['cluster'] == i]
-        fg = folium.FeatureGroup(name=f'Cluster {i} ({len(cluster_data)} points)')
-
-        # Sample for performance
-        sample_size = min(300, len(cluster_data))
-        cluster_sample = cluster_data.sample(n=sample_size, random_state=42)
-
-        for _, row in cluster_sample.iterrows():
+        for _, row in cluster_data.iterrows():
             folium.CircleMarker(
                 location=[row['latitude'], row['longitude']],
-                radius=4,
-                popup=f"Cluster {i}<br>FRP: {row['frp']:.2f}",
+                radius=5,
+                popup=f"Cluster {i}<br>FRP: {row['frp']:.1f}",
                 color=colors[i],
                 fill=True,
                 fillColor=colors[i],
                 fillOpacity=0.7
-            ).add_to(fg)
+            ).add_to(map_simple_clusters)
 
-        fg.add_to(map_clusters)
+    map_simple_clusters.save(os.path.join(output_dir, 'simple_clusters.html'))
+    print("✓ Simple cluster map saved")
 
-    folium.LayerControl().add_to(map_clusters)
-    map_clusters.save(os.path.join(output_dir, 'clusters.html'))
-    print("✓ Cluster map saved")
+    # Simple Heatmap
+    map_simple_heat = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=5,
+        tiles='OpenStreetMap'
+    )
 
-    # Heatmap
-    map_heat = folium.Map(location=[center_lat, center_lon], zoom_start=5)
     heat_data = [[row['latitude'], row['longitude'], row['frp']]
                  for _, row in df.iterrows()]
-    HeatMap(heat_data, radius=15, blur=20).add_to(map_heat)
-    map_heat.save(os.path.join(output_dir, 'heatmap.html'))
-    print("✓ Heatmap saved")
+    HeatMap(heat_data).add_to(map_simple_heat)
+
+    map_simple_heat.save(os.path.join(output_dir, 'simple_heatmap.html'))
+    print("✓ Simple heatmap saved")
+
+
+def create_advanced_maps(df, output_dir):
+    """Create 2 advanced interactive maps with enhanced features"""
+    print("\n🗺️  STEP 8b: Advanced Maps")
+    print("-" * 80)
+
+    center_lat = df['latitude'].mean()
+    center_lon = df['longitude'].mean()
+    colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+              '#1abc9c', '#e67e22', '#34495e', '#95a5a6', '#d35400']
+    n_clusters = df['cluster'].nunique()
+
+    # Calculate cluster statistics
+    cluster_stats = []
+    for i in range(n_clusters):
+        cluster_data = df[df['cluster'] == i]
+        cluster_stats.append({
+            'id': i,
+            'count': len(cluster_data),
+            'avg_frp': cluster_data['frp'].mean(),
+            'max_frp': cluster_data['frp'].max(),
+            'min_frp': cluster_data['frp'].min()
+        })
+
+    # ADVANCED Clusters Map
+    map_clusters = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=9,
+        tiles='OpenStreetMap'
+    )
+
+    # Add alternative base maps
+    folium.TileLayer(
+        tiles='https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        attr='OpenTopoMap',
+        name='Topographic',
+        overlay=False,
+        control=True
+    ).add_to(map_clusters)
+    folium.TileLayer(
+        tiles='CartoDB positron',
+        name='Light',
+        overlay=False,
+        control=True
+    ).add_to(map_clusters)
+
+    # Add clusters with MarkerCluster for better performance
+    for i in range(n_clusters):
+        cluster_data = df[df['cluster'] == i]
+        stats = cluster_stats[i]
+
+        # Create marker cluster group
+        marker_cluster = MarkerCluster(
+            name=f'🔥 Cluster {i} ({stats["count"]} points, Avg FRP: {stats["avg_frp"]:.1f})',
+            overlay=True,
+            control=True,
+            icon_create_function=f'''
+                function(cluster) {{
+                    return L.divIcon({{
+                        html: '<div style="background-color: {colors[i]}; opacity: 0.7; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">' + cluster.getChildCount() + '</div>',
+                        className: 'marker-cluster',
+                        iconSize: L.point(30, 30)
+                    }});
+                }}
+            '''
+        )
+
+        # Add markers
+        for _, row in cluster_data.iterrows():
+            # Determine marker size based on FRP
+            radius = 6 if row['frp'] > 20 else 4 if row['frp'] > 10 else 3
+
+            # Rich popup with more info
+            popup_html = f"""
+            <div style="font-family: Arial; min-width: 200px;">
+                <h4 style="margin: 0 0 10px 0; color: {colors[i]}; border-bottom: 2px solid {colors[i]}; padding-bottom: 5px;">
+                    🔥 Cluster {i}
+                </h4>
+                <table style="width: 100%; font-size: 12px;">
+                    <tr><td><b>Location:</b></td><td>{row['latitude']:.4f}, {row['longitude']:.4f}</td></tr>
+                    <tr><td><b>FRP:</b></td><td>{row['frp']:.2f} MW</td></tr>
+                    <tr><td><b>Brightness:</b></td><td>{row['brightness']:.1f} K</td></tr>
+                    <tr><td><b>Cluster Avg:</b></td><td>{stats['avg_frp']:.2f} MW</td></tr>
+                </table>
+            </div>
+            """
+
+            folium.CircleMarker(
+                location=[row['latitude'], row['longitude']],
+                radius=radius,
+                popup=folium.Popup(popup_html, max_width=250),
+                tooltip=f"Cluster {i} | FRP: {row['frp']:.1f}",
+                color=colors[i],
+                fill=True,
+                fillColor=colors[i],
+                fillOpacity=0.8,
+                weight=2
+            ).add_to(marker_cluster)
+
+        marker_cluster.add_to(map_clusters)
+
+    # Add MiniMap for navigation
+    minimap = MiniMap(toggle_display=True, position='bottomleft')
+    map_clusters.add_child(minimap)
+
+    # Add Fullscreen button
+    Fullscreen(position='topleft').add_to(map_clusters)
+
+    # Add layer control
+    folium.LayerControl(collapsed=False).add_to(map_clusters)
+
+    # Add custom legend
+    legend_html = f'''
+    <div style="position: fixed; bottom: 50px; right: 50px; width: 280px; height: auto;
+                background-color: white; border: 2px solid grey; z-index: 9999; font-size: 12px;
+                padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h4 style="margin: 0 0 10px 0; border-bottom: 2px solid #333; padding-bottom: 5px;">
+            📊 Cluster Summary
+        </h4>
+        <div style="max-height: 300px; overflow-y: auto;">
+    '''
+
+    for stats in sorted(cluster_stats, key=lambda x: x['avg_frp'], reverse=True):
+        i = stats['id']
+        legend_html += f'''
+        <div style="margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid {colors[i]};">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: bold; color: {colors[i]};">Cluster {i}</span>
+                <span style="background: {colors[i]}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 10px;">
+                    {stats['count']} points
+                </span>
+            </div>
+            <div style="font-size: 11px; color: #666; margin-top: 4px;">
+                Avg FRP: <b>{stats['avg_frp']:.1f}</b> |
+                Max: <b>{stats['max_frp']:.1f}</b>
+            </div>
+        </div>
+        '''
+
+    legend_html += '''
+        </div>
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 10px; color: #999;">
+            💡 Click clusters to zoom | Toggle layers above
+        </div>
+    </div>
+    '''
+
+    map_clusters.get_root().html.add_child(folium.Element(legend_html))
+
+    map_clusters.save(os.path.join(output_dir, 'advanced_clusters.html'))
+    print("✓ Advanced cluster map saved")
+
+    # ADVANCED Heatmap
+    map_heat = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=9,
+        tiles=None  # No default tiles, so LayerControl can switch
+    )
+
+    # Add base map options
+    folium.TileLayer(
+        tiles='CartoDB dark_matter',
+        name='Dark (Default)',
+        overlay=False,
+        control=True
+    ).add_to(map_heat)
+
+    folium.TileLayer(
+        tiles='OpenStreetMap',
+        name='Street Map',
+        overlay=False,
+        control=True
+    ).add_to(map_heat)
+
+    folium.TileLayer(
+        tiles='https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        attr='OpenTopoMap',
+        name='Topographic',
+        overlay=False,
+        control=True
+    ).add_to(map_heat)
+
+    folium.TileLayer(
+        tiles='CartoDB positron',
+        name='Light',
+        overlay=False,
+        control=True
+    ).add_to(map_heat)
+
+    # Heatmap with gradient
+    heat_data = [[row['latitude'], row['longitude'], row['frp']]
+                 for _, row in df.iterrows()]
+
+    HeatMap(
+        heat_data,
+        min_opacity=0.3,
+        max_opacity=0.8,
+        radius=20,
+        blur=25,
+        gradient={
+            0.0: 'blue',
+            0.3: 'lime',
+            0.5: 'yellow',
+            0.7: 'orange',
+            1.0: 'red'
+        }
+    ).add_to(map_heat)
+
+    # Add controls
+    Fullscreen(position='topleft').add_to(map_heat)
+    folium.LayerControl().add_to(map_heat)
+
+    # Add info panel (bottom-right to avoid blocking LayerControl)
+    info_html = f'''
+    <div style="position: fixed; bottom: 50px; right: 10px; width: 200px;
+                background-color: rgba(0,0,0,0.8); border: 2px solid #333; z-index: 9999;
+                color: white; font-size: 12px; padding: 15px; border-radius: 8px;">
+        <h4 style="margin: 0 0 10px 0; color: #ff6b6b;">🔥 Fire Intensity</h4>
+        <p style="margin: 5px 0;"><b>Total Points:</b> {len(df):,}</p>
+        <p style="margin: 5px 0;"><b>Avg FRP:</b> {df['frp'].mean():.2f} MW</p>
+        <p style="margin: 5px 0;"><b>Max FRP:</b> {df['frp'].max():.2f} MW</p>
+        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #555;">
+            <div style="font-size: 10px; margin: 3px 0;">
+                <span style="color: blue;">●</span> Low Intensity
+            </div>
+            <div style="font-size: 10px; margin: 3px 0;">
+                <span style="color: yellow;">●</span> Medium
+            </div>
+            <div style="font-size: 10px; margin: 3px 0;">
+                <span style="color: red;">●</span> High Intensity
+            </div>
+        </div>
+    </div>
+    '''
+
+    map_heat.get_root().html.add_child(folium.Element(info_html))
+
+    map_heat.save(os.path.join(output_dir, 'advanced_heatmap.html'))
+    print("✓ Advanced heatmap saved")
 
 def print_summary(dataset_name, df, n_clusters, silhouette, davies_bouldin, output_dir):
     """Print final summary"""
@@ -286,8 +528,10 @@ Output: {output_dir}/
   │   ├── clusters_location.png
   │   └── clusters_brightness_frp.png
   └── maps/
-      ├── clusters.html      ← Buka di browser!
-      └── heatmap.html
+      ├── simple_clusters.html          ← Simple: Cluster markers
+      ├── simple_heatmap.html           ← Simple: Heatmap
+      ├── advanced_clusters.html        ← Advanced: MarkerCluster + controls
+      └── advanced_heatmap.html         ← Advanced: Heatmap + layer control
 
 Next:
   • Buka file HTML untuk lihat peta interaktif
@@ -347,7 +591,8 @@ def main():
 
     # Visualization
     plot_clusters(df_clean, dirs['plots'])
-    create_maps(df_clean, dirs['maps'])
+    create_simple_maps(df_clean, dirs['maps'])
+    create_advanced_maps(df_clean, dirs['maps'])
 
     # Summary
     print_summary(dataset_name, df_clean, NUM_CLUSTERS,
