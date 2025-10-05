@@ -169,15 +169,16 @@ def generate_filtered_datasets(regions_to_filter=None, method='bounding_box'):
     # Load GeoJSON if using geojson method
     geojson_data = None
     if method == 'geojson':
-        geojson_path = 'data/geojson/indonesia-province-simple.json'
+        geojson_path = 'data/geojson/indonesia-prov-38.json'
         if not os.path.exists(geojson_path):
             print(f"   ❌ GeoJSON tidak ditemukan: {geojson_path}")
-            print(f"   💡 Download dulu dengan: curl -L https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia-province-simple.json -o {geojson_path}")
+            print(f"   💡 Download dulu dengan:")
+            print(f"      curl -L https://raw.githubusercontent.com/ans-4175/peta-indonesia-geojson/master/indonesia-prov.geojson -o {geojson_path}")
             return
 
         with open(geojson_path, 'r') as f:
             geojson_data = json.load(f)
-        print(f"   ✓ GeoJSON loaded: {len(geojson_data['features'])} provinsi")
+        print(f"   ✓ GeoJSON loaded: {len(geojson_data['features'])} provinsi (Updated 2023)")
         print()
 
     # Determine regions
@@ -287,6 +288,12 @@ def generate_filtered_datasets(regions_to_filter=None, method='bounding_box'):
         os.makedirs(maps_dir, exist_ok=True)
         print(f"\n📁 Maps directory: {maps_dir}/")
 
+        # Load GeoJSON if using geojson method (for polygon visualization)
+        geojson_for_viz = None
+        if method == 'geojson' and geojson_data:
+            geojson_for_viz = geojson_data
+            print(f"   ✓ Using GeoJSON polygons for boundary visualization")
+
         # Map 1: Overview Map - All regions in one map
         print("\n📍 Creating overview map...")
 
@@ -350,17 +357,39 @@ def generate_filtered_datasets(regions_to_filter=None, method='bounding_box'):
 
             fg.add_to(map_overview)
 
-        # Add bounding boxes
+        # Add boundaries (polygons for GeoJSON, rectangles for bounding box)
         for r in successful[:15]:
-            if r['region'] in INDONESIA_REGIONS:
+            region_display = r['region'].replace('_', ' ')
+
+            if geojson_for_viz:
+                # Draw actual province polygons from GeoJSON
+                for feature in geojson_for_viz['features']:
+                    geojson_name = feature['properties']['Propinsi'].upper().replace(' ', '_')
+                    search_name = r['region'].upper().replace(' ', '_')
+
+                    if geojson_name == search_name or search_name in geojson_name or geojson_name in search_name:
+                        folium.GeoJson(
+                            feature,
+                            name=f"Boundary: {region_display}",
+                            style_function=lambda x: {
+                                'fillColor': 'transparent',
+                                'color': 'blue',
+                                'weight': 2,
+                                'fillOpacity': 0,
+                                'opacity': 0.7
+                            },
+                            tooltip=f"<b>{region_display}</b><br>{r['num_points']:,} fire spots"
+                        ).add_to(map_overview)
+                        break
+            elif r['region'] in INDONESIA_REGIONS:
+                # Draw bounding box rectangles
                 bounds = INDONESIA_REGIONS[r['region']]
                 min_lat, max_lat = bounds['lat']
                 min_lon, max_lon = bounds['lon']
 
-                # Draw rectangle for bounding box
                 folium.Rectangle(
                     bounds=[[min_lat, min_lon], [max_lat, max_lon]],
-                    popup=f"<b>{r['region'].replace('_', ' ')}</b><br>{r['num_points']:,} fire spots",
+                    popup=f"<b>{region_display}</b><br>{r['num_points']:,} fire spots",
                     color='black',
                     fill=False,
                     weight=2,
@@ -397,8 +426,28 @@ def generate_filtered_datasets(regions_to_filter=None, method='bounding_box'):
                 tiles='OpenStreetMap'
             )
 
-            # Add bounding box
-            if r['region'] in INDONESIA_REGIONS:
+            # Add boundary (polygon for GeoJSON, rectangle for bounding box)
+            if geojson_for_viz:
+                # Draw actual province polygon from GeoJSON
+                for feature in geojson_for_viz['features']:
+                    geojson_name = feature['properties']['Propinsi'].upper().replace(' ', '_')
+                    search_name = r['region'].upper().replace(' ', '_')
+
+                    if geojson_name == search_name or search_name in geojson_name or geojson_name in search_name:
+                        folium.GeoJson(
+                            feature,
+                            name=f"Province Boundary: {region_display}",
+                            style_function=lambda x: {
+                                'fillColor': 'transparent',
+                                'color': 'blue',
+                                'weight': 3,
+                                'fillOpacity': 0
+                            },
+                            tooltip=f"<b>Province Boundary</b><br>{region_display}"
+                        ).add_to(map_region)
+                        break
+            elif r['region'] in INDONESIA_REGIONS:
+                # Draw bounding box rectangle
                 bounds = INDONESIA_REGIONS[r['region']]
                 min_lat, max_lat = bounds['lat']
                 min_lon, max_lon = bounds['lon']
@@ -439,16 +488,20 @@ def generate_filtered_datasets(regions_to_filter=None, method='bounding_box'):
             folium.LayerControl().add_to(map_region)
 
             # Add info box
+            boundary_desc = "Blue line: Province polygon" if geojson_for_viz else "Red box: Bounding box"
+            method_name = "GeoJSON Polygon" if geojson_for_viz else "Bounding Box"
+
             info_html = f'''
-            <div style="position: fixed; top: 10px; right: 10px; width: 250px;
+            <div style="position: fixed; top: 10px; right: 10px; width: 270px;
                         background-color: white; border:2px solid grey; z-index:9999;
                         font-size:14px; padding: 10px; border-radius: 5px">
                 <h4 style="margin: 0 0 10px 0;">🔥 {region_display}</h4>
+                <p style="margin: 5px 0;"><b>Method:</b> {method_name}</p>
                 <p style="margin: 5px 0;"><b>Total:</b> {r['num_points']:,} fire spots</p>
                 <p style="margin: 5px 0;"><b>Avg FRP:</b> {r['avg_frp']:.2f}</p>
                 <p style="margin: 5px 0; font-size: 11px; color: #666;">
                     Red dots: Fire spots<br>
-                    Red box: Bounding box
+                    {boundary_desc}
                 </p>
             </div>
             '''
