@@ -1,105 +1,90 @@
 """
-FILTER DATA FIRE SPOTS BERDASARKAN KOTA
-========================================
+FILTER DATA FIRE SPOTS BERDASARKAN WILAYAH
+===========================================
 
-Script ini akan memfilter data fire spots berdasarkan kota dan menyimpannya
-ke dalam folder data/filtered/ untuk digunakan oleh clustering_fire_spots.py
+Script ini akan memfilter data fire spots berdasarkan wilayah (provinsi/kota besar)
+dan menyimpannya ke folder data/filtered/
 
-CARA PAKAI:
------------
-1. Jalankan script ini: python filter_by_city_guide.py
-2. Pilih mode (all/major/custom cities)
-3. Data akan disimpan di: data/filtered/method_1_bounding_box/
-
-OUTPUT:
--------
-data/filtered/method_1_bounding_box/
-    ├── Jakarta.csv
-    ├── Surabaya.csv
-    ├── Bandung.csv
-    └── ...
+CATATAN PENTING:
+- Fire spots biasanya di luar kota (hutan, perkebunan)
+- Bounding box dibuat lebih luas untuk capture area sekitar
+- Data disimpan di: data/filtered/method_1_bounding_box/
 
 Author: Untuk keperluan pengajaran Data Mining
 """
 
 import pandas as pd
 import os
+import folium
+from folium.plugins import HeatMap
 
 # =============================================================================
-# KOTA-KOTA DI INDONESIA DENGAN BOUNDING BOX
+# WILAYAH INDONESIA DENGAN BOUNDING BOX (DIPERLUAS!)
 # =============================================================================
 
-INDONESIA_CITIES = {
-    # Pulau Jawa
-    'Jakarta': {'lat': (-6.35, -6.08), 'lon': (106.65, 106.98)},
-    'Bogor': {'lat': (-6.65, -6.50), 'lon': (106.75, 106.85)},
-    'Depok': {'lat': (-6.45, -6.35), 'lon': (106.75, 106.90)},
-    'Tangerang': {'lat': (-6.25, -6.10), 'lon': (106.55, 106.75)},
-    'Bekasi': {'lat': (-6.30, -6.15), 'lon': (106.90, 107.10)},
-    'Bandung': {'lat': (-7.05, -6.80), 'lon': (107.50, 107.75)},
-    'Semarang': {'lat': (-7.05, -6.90), 'lon': (110.35, 110.50)},
-    'Yogyakarta': {'lat': (-7.90, -7.75), 'lon': (110.30, 110.45)},
-    'Surabaya': {'lat': (-7.35, -7.15), 'lon': (112.65, 112.85)},
-    'Malang': {'lat': (-8.00, -7.90), 'lon': (112.60, 112.70)},
+# Fire spots biasanya BUKAN di pusat kota, tapi di area sekitar
+# Jadi bounding box dibuat lebih luas untuk capture hutan/perkebunan
 
-    # Pulau Sumatera
-    'Medan': {'lat': (3.45, 3.65), 'lon': (98.60, 98.75)},
-    'Pekanbaru': {'lat': (0.45, 0.60), 'lon': (101.35, 101.50)},
-    'Padang': {'lat': (-1.05, -0.85), 'lon': (100.30, 100.45)},
-    'Palembang': {'lat': (-3.05, -2.85), 'lon': (104.65, 104.85)},
-    'Jambi': {'lat': (-1.65, -1.50), 'lon': (103.55, 103.70)},
-    'Bengkulu': {'lat': (-3.85, -3.75), 'lon': (102.25, 102.35)},
-    'Bandar Lampung': {'lat': (-5.50, -5.35), 'lon': (105.20, 105.35)},
-    'Banda Aceh': {'lat': (5.50, 5.60), 'lon': (95.30, 95.40)},
+INDONESIA_REGIONS = {
+    # ========== SUMATERA (PRIORITAS - Hotspot Area!) ==========
+    'Aceh': {'lat': (2.5, 6.0), 'lon': (95.0, 98.5)},
+    'Sumatera_Utara': {'lat': (1.0, 4.5), 'lon': (98.0, 100.5)},
+    'Riau': {'lat': (-1.5, 2.5), 'lon': (100.0, 105.0)},
+    'Kepulauan_Riau': {'lat': (-1.5, 2.0), 'lon': (103.0, 108.0)},
+    'Sumatera_Barat': {'lat': (-3.5, 0.5), 'lon': (98.5, 102.0)},
+    'Jambi': {'lat': (-3.0, 0.5), 'lon': (101.0, 105.0)},
+    'Sumatera_Selatan': {'lat': (-5.0, -1.5), 'lon': (102.0, 106.0)},
+    'Bengkulu': {'lat': (-5.5, -2.0), 'lon': (101.0, 104.0)},
+    'Lampung': {'lat': (-6.0, -3.5), 'lon': (103.5, 106.0)},
+    'Bangka_Belitung': {'lat': (-3.5, -1.5), 'lon': (105.0, 108.5)},
 
-    # Pulau Kalimantan
-    'Pontianak': {'lat': (-0.10, 0.10), 'lon': (109.25, 109.40)},
-    'Palangkaraya': {'lat': (-2.30, -2.15), 'lon': (113.85, 114.00)},
-    'Banjarmasin': {'lat': (-3.35, -3.25), 'lon': (114.55, 114.65)},
-    'Balikpapan': {'lat': (-1.35, -1.15), 'lon': (116.75, 116.95)},
-    'Samarinda': {'lat': (-0.60, -0.40), 'lon': (117.10, 117.20)},
+    # ========== JAWA ==========
+    'Banten': {'lat': (-7.0, -5.5), 'lon': (105.0, 107.0)},
+    'DKI_Jakarta': {'lat': (-6.5, -5.8), 'lon': (106.5, 107.2)},
+    'Jawa_Barat': {'lat': (-8.0, -5.5), 'lon': (106.0, 109.0)},
+    'Jawa_Tengah': {'lat': (-8.5, -6.0), 'lon': (108.5, 111.5)},
+    'DI_Yogyakarta': {'lat': (-8.5, -7.5), 'lon': (110.0, 111.0)},
+    'Jawa_Timur': {'lat': (-9.0, -6.5), 'lon': (111.0, 115.0)},
 
-    # Pulau Sulawesi
-    'Makassar': {'lat': (-5.20, -5.05), 'lon': (119.35, 119.50)},
-    'Manado': {'lat': (1.45, 1.50), 'lon': (124.80, 124.90)},
-    'Palu': {'lat': (-0.95, -0.85), 'lon': (119.85, 119.95)},
-    'Kendari': {'lat': (-4.00, -3.95), 'lon': (122.50, 122.60)},
+    # ========== KALIMANTAN (Hotspot Area!) ==========
+    'Kalimantan_Barat': {'lat': (-3.5, 2.5), 'lon': (108.5, 112.5)},
+    'Kalimantan_Tengah': {'lat': (-4.0, 0.5), 'lon': (111.0, 115.5)},
+    'Kalimantan_Selatan': {'lat': (-4.5, -1.5), 'lon': (114.0, 117.0)},
+    'Kalimantan_Timur': {'lat': (-2.5, 3.0), 'lon': (115.0, 119.5)},
+    'Kalimantan_Utara': {'lat': (1.5, 4.5), 'lon': (115.5, 118.5)},
 
-    # Bali & Nusa Tenggara
-    'Denpasar': {'lat': (-8.75, -8.60), 'lon': (115.15, 115.30)},
-    'Mataram': {'lat': (-8.65, -8.55), 'lon': (116.05, 116.15)},
-    'Kupang': {'lat': (-10.25, -10.15), 'lon': (123.55, 123.65)},
+    # ========== SULAWESI ==========
+    'Sulawesi_Utara': {'lat': (0.0, 2.5), 'lon': (123.5, 127.0)},
+    'Gorontalo': {'lat': (0.0, 1.5), 'lon': (121.5, 123.5)},
+    'Sulawesi_Tengah': {'lat': (-3.5, 1.5), 'lon': (119.5, 124.0)},
+    'Sulawesi_Barat': {'lat': (-3.5, -1.5), 'lon': (118.5, 120.0)},
+    'Sulawesi_Selatan': {'lat': (-7.0, -2.5), 'lon': (118.5, 121.5)},
+    'Sulawesi_Tenggara': {'lat': (-6.0, -2.5), 'lon': (120.5, 124.0)},
 
-    # Maluku & Papua
-    'Ambon': {'lat': (-3.75, -3.65), 'lon': (128.15, 128.25)},
-    'Jayapura': {'lat': (-2.65, -2.50), 'lon': (140.65, 140.75)},
+    # ========== BALI & NUSA TENGGARA ==========
+    'Bali': {'lat': (-8.8, -8.0), 'lon': (114.5, 115.8)},
+    'NTB': {'lat': (-9.5, -8.0), 'lon': (115.5, 119.5)},
+    'NTT': {'lat': (-11.0, -8.0), 'lon': (118.5, 125.0)},
+
+    # ========== MALUKU & PAPUA ==========
+    'Maluku': {'lat': (-9.0, -2.0), 'lon': (124.0, 132.0)},
+    'Maluku_Utara': {'lat': (-2.5, 3.5), 'lon': (124.0, 129.5)},
+    'Papua_Barat': {'lat': (-4.5, 1.5), 'lon': (130.0, 135.0)},
+    'Papua': {'lat': (-9.5, 0.5), 'lon': (135.0, 141.5)},
 }
 
 # =============================================================================
 # FUNGSI FILTER
 # =============================================================================
 
-def filter_by_bounding_box(df, city_name):
-    """
-    Filter dataframe berdasarkan bounding box kota
-
-    Parameters:
-    -----------
-    df : pandas.DataFrame
-        DataFrame dengan kolom 'latitude' dan 'longitude'
-    city_name : str
-        Nama kota (harus ada di INDONESIA_CITIES)
-
-    Returns:
-    --------
-    pandas.DataFrame atau None
-    """
-    if city_name not in INDONESIA_CITIES:
+def filter_by_region(df, region_name):
+    """Filter dataframe berdasarkan bounding box wilayah"""
+    if region_name not in INDONESIA_REGIONS:
         return None
 
-    city_bounds = INDONESIA_CITIES[city_name]
-    min_lat, max_lat = city_bounds['lat']
-    min_lon, max_lon = city_bounds['lon']
+    bounds = INDONESIA_REGIONS[region_name]
+    min_lat, max_lat = bounds['lat']
+    min_lon, max_lon = bounds['lon']
 
     filtered = df[
         (df['latitude'] >= min_lat) &
@@ -114,18 +99,11 @@ def filter_by_bounding_box(df, city_name):
 # FUNGSI UTAMA
 # =============================================================================
 
-def generate_filtered_datasets(cities_to_filter=None):
-    """
-    Generate filtered datasets untuk kota-kota yang dipilih
-
-    Parameters:
-    -----------
-    cities_to_filter : list atau None
-        List nama kota. Jika None, akan filter semua kota yang ada
-    """
+def generate_filtered_datasets(regions_to_filter=None):
+    """Generate filtered datasets untuk wilayah yang dipilih"""
 
     print("="*80)
-    print("GENERATE FILTERED DATA PER KOTA")
+    print("GENERATE FILTERED DATA PER WILAYAH")
     print("="*80)
     print()
 
@@ -135,8 +113,6 @@ def generate_filtered_datasets(cities_to_filter=None):
 
     if not os.path.exists(raw_data_path):
         print(f"   ❌ File tidak ditemukan: {raw_data_path}")
-        print()
-        print("   💡 Pastikan file CSV ada di folder data/raw/")
         return
 
     df = pd.read_csv(raw_data_path)
@@ -144,61 +120,56 @@ def generate_filtered_datasets(cities_to_filter=None):
     print(f"   📅 Periode: {df['acq_date'].min()} - {df['acq_date'].max()}")
     print()
 
-    # Determine which cities to filter
-    if cities_to_filter is None:
-        cities_to_filter = list(INDONESIA_CITIES.keys())
+    # Determine regions
+    if regions_to_filter is None:
+        regions_to_filter = list(INDONESIA_REGIONS.keys())
 
     # Create output directory
     output_dir = 'data/filtered/method_1_bounding_box'
     os.makedirs(output_dir, exist_ok=True)
 
-    print(f"📁 Output directory: {output_dir}/")
-    print(f"🏙️  Kota yang akan difilter: {len(cities_to_filter)} kota")
+    print(f"📁 Output: {output_dir}/")
+    print(f"🗺️  Wilayah: {len(regions_to_filter)} wilayah")
     print()
 
-    # Filter and save for each city
+    # Filter and save
     print("="*80)
     print("PROCESSING...")
     print("="*80)
 
     results = []
-    for i, city in enumerate(cities_to_filter, 1):
-        print(f"\n[{i}/{len(cities_to_filter)}] {city}")
+    for i, region in enumerate(regions_to_filter, 1):
+        print(f"\n[{i}/{len(regions_to_filter)}] {region.replace('_', ' ')}")
 
-        # Filter data
-        df_city = filter_by_bounding_box(df, city)
+        df_region = filter_by_region(df, region)
 
-        if df_city is None:
-            print(f"   ⚠️  Kota tidak ditemukan di database")
+        if df_region is None:
+            print(f"   ⚠️  Wilayah tidak ditemukan")
             continue
 
-        num_points = len(df_city)
+        num_points = len(df_region)
 
         if num_points == 0:
             print(f"   ⚠️  Tidak ada fire spots")
-            results.append({
-                'city': city,
-                'status': 'no_data',
-                'num_points': 0
-            })
+            results.append({'region': region, 'status': 'no_data', 'num_points': 0})
             continue
 
-        # Save to CSV
-        filename = f"{city.replace(' ', '_')}.csv"
+        # Save
+        filename = f"{region}.csv"
         file_path = os.path.join(output_dir, filename)
-        df_city.to_csv(file_path, index=False)
+        df_region.to_csv(file_path, index=False)
 
-        # Calculate statistics
-        avg_frp = df_city['frp'].mean()
-        date_range = f"{df_city['acq_date'].min()} - {df_city['acq_date'].max()}"
+        # Stats
+        avg_frp = df_region['frp'].mean()
+        date_range = f"{df_region['acq_date'].min()} - {df_region['acq_date'].max()}"
 
         print(f"   ✓ {num_points:,} fire spots")
         print(f"   📊 Avg FRP: {avg_frp:.2f}")
         print(f"   📅 {date_range}")
-        print(f"   💾 Saved: {filename}")
+        print(f"   💾 {filename}")
 
         results.append({
-            'city': city,
+            'region': region,
             'status': 'success',
             'num_points': num_points,
             'avg_frp': avg_frp
@@ -213,29 +184,227 @@ def generate_filtered_datasets(cities_to_filter=None):
     successful = [r for r in results if r['status'] == 'success']
     no_data = [r for r in results if r['status'] == 'no_data']
 
-    print(f"\n✅ Berhasil: {len(successful)} kota")
-    print(f"⚠️  Tidak ada data: {len(no_data)} kota")
+    print(f"\n✅ Berhasil: {len(successful)} wilayah")
+    print(f"⚠️  Tidak ada data: {len(no_data)} wilayah")
     print()
 
     if successful:
-        print("Top 10 kota dengan fire spots terbanyak:")
+        print("Top 15 wilayah dengan fire spots terbanyak:")
         print("-" * 70)
-        sorted_results = sorted(successful, key=lambda x: x['num_points'], reverse=True)[:10]
+        sorted_results = sorted(successful, key=lambda x: x['num_points'], reverse=True)[:15]
         for i, r in enumerate(sorted_results, 1):
-            print(f"{i:2d}. {r['city']:20s} : {r['num_points']:6,} fire spots (avg FRP: {r['avg_frp']:6.2f})")
+            region_display = r['region'].replace('_', ' ')
+            print(f"{i:2d}. {region_display:25s} : {r['num_points']:6,} fire spots (FRP: {r['avg_frp']:6.2f})")
 
     print()
-    print(f"📁 Semua file disimpan di: {output_dir}/")
+    print(f"📁 Files saved to: {output_dir}/")
+
+    # ==========================================================================
+    # VISUALISASI FOLIUM
+    # ==========================================================================
+
+    if successful:
+        print()
+        print("="*80)
+        print("🗺️  GENERATING VISUALIZATION MAPS...")
+        print("="*80)
+
+        # Create maps folder
+        maps_dir = 'data/filtered/maps'
+        os.makedirs(maps_dir, exist_ok=True)
+
+        # Map 1: Overview Map - All regions in one map
+        print("\n📍 Creating overview map...")
+
+        # Calculate center
+        all_lats = []
+        all_lons = []
+        for r in successful:
+            region_file = os.path.join(output_dir, f"{r['region']}.csv")
+            if os.path.exists(region_file):
+                df_temp = pd.read_csv(region_file)
+                all_lats.extend(df_temp['latitude'].tolist())
+                all_lons.extend(df_temp['longitude'].tolist())
+
+        if all_lats and all_lons:
+            center_lat = sum(all_lats) / len(all_lats)
+            center_lon = sum(all_lons) / len(all_lons)
+        else:
+            center_lat, center_lon = -2.5, 118  # Center of Indonesia
+
+        # Create overview map
+        map_overview = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=5,
+            tiles='OpenStreetMap'
+        )
+
+        # Colors for regions
+        colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown',
+                  'pink', 'darkred', 'lightred', 'beige', 'darkblue',
+                  'darkgreen', 'cadetblue', 'darkpurple', 'white']
+
+        # Add each region to overview map
+        for idx, r in enumerate(successful[:15]):  # Limit to top 15 for performance
+            region_file = os.path.join(output_dir, f"{r['region']}.csv")
+            if not os.path.exists(region_file):
+                continue
+
+            df_region = pd.read_csv(region_file)
+
+            # Sample for performance (max 500 points per region)
+            if len(df_region) > 500:
+                df_region = df_region.sample(n=500, random_state=42)
+
+            color = colors[idx % len(colors)]
+            region_display = r['region'].replace('_', ' ')
+
+            # Create feature group
+            fg = folium.FeatureGroup(name=f"{region_display} ({r['num_points']:,} points)")
+
+            # Add markers
+            for _, row in df_region.iterrows():
+                folium.CircleMarker(
+                    location=[row['latitude'], row['longitude']],
+                    radius=3,
+                    popup=f"<b>{region_display}</b><br>FRP: {row['frp']:.2f}",
+                    color=color,
+                    fill=True,
+                    fillColor=color,
+                    fillOpacity=0.6
+                ).add_to(fg)
+
+            fg.add_to(map_overview)
+
+        # Add bounding boxes
+        for r in successful[:15]:
+            if r['region'] in INDONESIA_REGIONS:
+                bounds = INDONESIA_REGIONS[r['region']]
+                min_lat, max_lat = bounds['lat']
+                min_lon, max_lon = bounds['lon']
+
+                # Draw rectangle for bounding box
+                folium.Rectangle(
+                    bounds=[[min_lat, min_lon], [max_lat, max_lon]],
+                    popup=f"<b>{r['region'].replace('_', ' ')}</b><br>{r['num_points']:,} fire spots",
+                    color='black',
+                    fill=False,
+                    weight=2,
+                    opacity=0.5
+                ).add_to(map_overview)
+
+        # Add layer control
+        folium.LayerControl().add_to(map_overview)
+
+        # Save overview map
+        overview_file = os.path.join(maps_dir, 'overview_all_regions.html')
+        map_overview.save(overview_file)
+        print(f"   ✓ Saved: {overview_file}")
+
+        # Map 2: Individual maps for top 5 regions
+        print("\n📍 Creating individual region maps (top 5)...")
+
+        for r in sorted_results[:5]:
+            region_file = os.path.join(output_dir, f"{r['region']}.csv")
+            if not os.path.exists(region_file):
+                continue
+
+            df_region = pd.read_csv(region_file)
+            region_display = r['region'].replace('_', ' ')
+
+            # Calculate center for this region
+            reg_center_lat = df_region['latitude'].mean()
+            reg_center_lon = df_region['longitude'].mean()
+
+            # Create map
+            map_region = folium.Map(
+                location=[reg_center_lat, reg_center_lon],
+                zoom_start=8,
+                tiles='OpenStreetMap'
+            )
+
+            # Add bounding box
+            if r['region'] in INDONESIA_REGIONS:
+                bounds = INDONESIA_REGIONS[r['region']]
+                min_lat, max_lat = bounds['lat']
+                min_lon, max_lon = bounds['lon']
+
+                folium.Rectangle(
+                    bounds=[[min_lat, min_lon], [max_lat, max_lon]],
+                    popup=f"<b>Bounding Box</b><br>{region_display}",
+                    color='red',
+                    fill=False,
+                    weight=3
+                ).add_to(map_region)
+
+            # Sample points for performance
+            df_sample = df_region.sample(n=min(1000, len(df_region)), random_state=42)
+
+            # Add fire spots
+            for _, row in df_sample.iterrows():
+                folium.CircleMarker(
+                    location=[row['latitude'], row['longitude']],
+                    radius=4,
+                    popup=f"<b>Fire Spot</b><br>"
+                          f"Lat: {row['latitude']:.4f}<br>"
+                          f"Lon: {row['longitude']:.4f}<br>"
+                          f"FRP: {row['frp']:.2f}<br>"
+                          f"Date: {row['acq_date']}",
+                    color='red',
+                    fill=True,
+                    fillColor='red',
+                    fillOpacity=0.7
+                ).add_to(map_region)
+
+            # Add heatmap layer
+            heat_data = [[row['latitude'], row['longitude'], row['frp']]
+                        for _, row in df_region.iterrows()]
+            HeatMap(heat_data, radius=15, blur=20).add_to(folium.FeatureGroup(name='Heatmap').add_to(map_region))
+
+            # Add layer control
+            folium.LayerControl().add_to(map_region)
+
+            # Add info box
+            info_html = f'''
+            <div style="position: fixed; top: 10px; right: 10px; width: 250px;
+                        background-color: white; border:2px solid grey; z-index:9999;
+                        font-size:14px; padding: 10px; border-radius: 5px">
+                <h4 style="margin: 0 0 10px 0;">🔥 {region_display}</h4>
+                <p style="margin: 5px 0;"><b>Total:</b> {r['num_points']:,} fire spots</p>
+                <p style="margin: 5px 0;"><b>Avg FRP:</b> {r['avg_frp']:.2f}</p>
+                <p style="margin: 5px 0; font-size: 11px; color: #666;">
+                    Red dots: Fire spots<br>
+                    Red box: Bounding box
+                </p>
+            </div>
+            '''
+            map_region.get_root().html.add_child(folium.Element(info_html))
+
+            # Save
+            region_map_file = os.path.join(maps_dir, f"{r['region']}.html")
+            map_region.save(region_map_file)
+            print(f"   ✓ {region_display}: {region_map_file}")
+
+        print()
+        print(f"📁 Maps saved to: {maps_dir}/")
+        print()
+        print("📌 VISUALIZATION FILES:")
+        print(f"   • overview_all_regions.html  - Lihat semua wilayah")
+        print(f"   • [Region].html              - Lihat per wilayah detail")
+
     print()
     print("="*80)
     print("✅ SELESAI!")
     print("="*80)
     print()
-    print("Next step:")
-    print("  1. Edit clustering_fire_spots.py")
-    print("  2. Ubah DATA_SOURCE ke salah satu file yang sudah dibuat")
-    print(f"     Contoh: DATA_SOURCE = '{output_dir}/Jakarta.csv'")
-    print("  3. Jalankan: python clustering_fire_spots.py")
+    print("Next:")
+    print("  1. Buka maps di browser untuk verifikasi visual")
+    print(f"     firefox {maps_dir}/overview_all_regions.html")
+    print()
+    print("  2. Jalankan clustering untuk wilayah tertentu:")
+    print("     Edit clustering_fire_spots.py")
+    print("     DATA_SOURCE = 'data/filtered/method_1_bounding_box/Riau.csv'")
+    print("     python clustering_fire_spots.py")
     print()
 
     return results
@@ -245,47 +414,53 @@ def generate_filtered_datasets(cities_to_filter=None):
 # =============================================================================
 
 def interactive_mode():
-    """Mode interaktif untuk memilih kota"""
+    """Mode interaktif"""
 
     print("="*80)
-    print("FILTER DATA FIRE SPOTS PER KOTA")
+    print("FILTER DATA FIRE SPOTS PER WILAYAH")
     print("="*80)
     print()
 
     print("Pilihan:")
-    print("  1. Filter SEMUA kota (34 kota)")
-    print("  2. Filter kota-kota UTAMA saja (10 kota)")
-    print("  3. Custom - pilih kota sendiri")
+    print("  1. Filter SEMUA wilayah (35 provinsi)")
+    print("  2. Filter wilayah SUMATERA saja (10 provinsi)")
+    print("  3. Filter wilayah KALIMANTAN saja (5 provinsi)")
+    print("  4. Custom")
     print()
 
-    choice = input("Pilihan Anda (1/2/3): ").strip()
+    choice = input("Pilihan (1/2/3/4): ").strip()
 
     if choice == '1':
-        cities = None  # Semua kota
-        print("\n✓ Akan memfilter SEMUA kota (34 kota)")
+        regions = None
+        print("\n✓ Semua wilayah Indonesia (35 provinsi)")
     elif choice == '2':
-        cities = ['Jakarta', 'Surabaya', 'Bandung', 'Medan', 'Makassar',
-                  'Semarang', 'Palembang', 'Pekanbaru', 'Denpasar', 'Balikpapan']
-        print(f"\n✓ Akan memfilter {len(cities)} kota utama")
+        regions = ['Aceh', 'Sumatera_Utara', 'Riau', 'Kepulauan_Riau',
+                   'Sumatera_Barat', 'Jambi', 'Sumatera_Selatan',
+                   'Bengkulu', 'Lampung', 'Bangka_Belitung']
+        print(f"\n✓ Wilayah Sumatera ({len(regions)} provinsi)")
     elif choice == '3':
-        print("\nKota yang tersedia:")
-        cities_list = list(INDONESIA_CITIES.keys())
-        for i in range(0, len(cities_list), 5):
-            print("  " + ", ".join(cities_list[i:i+5]))
+        regions = ['Kalimantan_Barat', 'Kalimantan_Tengah', 'Kalimantan_Selatan',
+                   'Kalimantan_Timur', 'Kalimantan_Utara']
+        print(f"\n✓ Wilayah Kalimantan ({len(regions)} provinsi)")
+    elif choice == '4':
+        print("\nWilayah tersedia:")
+        for i, region in enumerate(list(INDONESIA_REGIONS.keys()), 1):
+            print(f"  {i:2d}. {region.replace('_', ' ')}")
         print()
-        cities_input = input("Masukkan nama kota (pisahkan dengan koma): ").strip()
-        cities = [c.strip() for c in cities_input.split(',')]
-        print(f"\n✓ Akan memfilter {len(cities)} kota")
+        regions_input = input("Masukkan nama wilayah (pisah koma): ").strip()
+        regions = [r.strip().replace(' ', '_') for r in regions_input.split(',')]
+        print(f"\n✓ {len(regions)} wilayah dipilih")
     else:
-        print("\n❌ Pilihan tidak valid. Menggunakan mode default (10 kota utama)")
-        cities = ['Jakarta', 'Surabaya', 'Bandung', 'Medan', 'Makassar',
-                  'Semarang', 'Palembang', 'Pekanbaru', 'Denpasar', 'Balikpapan']
+        print("\n❌ Invalid. Default: Sumatera")
+        regions = ['Aceh', 'Sumatera_Utara', 'Riau', 'Kepulauan_Riau',
+                   'Sumatera_Barat', 'Jambi', 'Sumatera_Selatan',
+                   'Bengkulu', 'Lampung', 'Bangka_Belitung']
 
     print()
     confirm = input("Lanjutkan? (y/n): ").strip().lower()
 
     if confirm == 'y':
-        return generate_filtered_datasets(cities_to_filter=cities)
+        return generate_filtered_datasets(regions_to_filter=regions)
     else:
         print("\n❌ Dibatalkan")
         return None
@@ -297,23 +472,25 @@ def interactive_mode():
 if __name__ == '__main__':
     import sys
 
-    # Check command line arguments
     if len(sys.argv) > 1:
         if sys.argv[1] == '--all':
-            # Filter all cities
-            generate_filtered_datasets(cities_to_filter=None)
-        elif sys.argv[1] == '--major':
-            # Filter major cities only
-            major_cities = ['Jakarta', 'Surabaya', 'Bandung', 'Medan', 'Makassar',
-                           'Semarang', 'Palembang', 'Pekanbaru', 'Denpasar', 'Balikpapan']
-            generate_filtered_datasets(cities_to_filter=major_cities)
+            generate_filtered_datasets(regions_to_filter=None)
+        elif sys.argv[1] == '--sumatera':
+            sumatera = ['Aceh', 'Sumatera_Utara', 'Riau', 'Kepulauan_Riau',
+                       'Sumatera_Barat', 'Jambi', 'Sumatera_Selatan',
+                       'Bengkulu', 'Lampung', 'Bangka_Belitung']
+            generate_filtered_datasets(regions_to_filter=sumatera)
+        elif sys.argv[1] == '--kalimantan':
+            kalimantan = ['Kalimantan_Barat', 'Kalimantan_Tengah', 'Kalimantan_Selatan',
+                         'Kalimantan_Timur', 'Kalimantan_Utara']
+            generate_filtered_datasets(regions_to_filter=kalimantan)
         elif sys.argv[1] == '--help':
             print("Usage:")
-            print("  python filter_by_city_guide.py              # Interactive mode")
-            print("  python filter_by_city_guide.py --all        # Filter all 34 cities")
-            print("  python filter_by_city_guide.py --major      # Filter 10 major cities")
+            print("  python filter_by_city_guide.py                # Interactive")
+            print("  python filter_by_city_guide.py --all          # All provinces")
+            print("  python filter_by_city_guide.py --sumatera     # Sumatera only")
+            print("  python filter_by_city_guide.py --kalimantan   # Kalimantan only")
         else:
-            print("❌ Invalid argument. Use --help for usage information.")
+            print("❌ Invalid. Use --help")
     else:
-        # Interactive mode
         interactive_mode()
