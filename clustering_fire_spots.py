@@ -26,6 +26,15 @@ warnings.filterwarnings('ignore')
 sns.set_style('whitegrid')
 
 # =============================================================================
+# CONSTANTS
+# =============================================================================
+
+# Color palettes for visualization
+COLORS_SIMPLE = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+COLORS_ADVANCED = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+                   '#1abc9c', '#e67e22', '#34495e', '#95a5a6', '#d35400']
+
+# =============================================================================
 # ⚙️ KONFIGURASI - EDIT DI SINI
 # =============================================================================
 
@@ -173,46 +182,36 @@ def save_cluster_stats(df, features, output_file):
 
     print("\n✓ Cluster stats saved")
 
+def _create_scatter_plot(df, x_col, y_col, title, output_file):
+    """Helper: Create scatter plot for clusters"""
+    n_clusters = df['cluster'].nunique()
+    plt.figure(figsize=(12, 8))
+
+    for i in range(n_clusters):
+        cluster_data = df[df['cluster'] == i]
+        plt.scatter(cluster_data[x_col], cluster_data[y_col],
+                    c=COLORS_SIMPLE[i], label=f'Cluster {i}', alpha=0.6, s=20)
+
+    plt.xlabel(x_col.capitalize())
+    plt.ylabel(y_col.upper() if y_col == 'frp' else y_col.capitalize())
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300)
+    plt.close()
+
 def plot_clusters(df, output_dir):
     """Plot cluster visualizations"""
     print("\n🎨 STEP 7: Visualization")
     print("-" * 80)
 
-    colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
-    n_clusters = df['cluster'].nunique()
-
-    # Location plot
-    plt.figure(figsize=(12, 8))
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i]
-        plt.scatter(cluster_data['longitude'], cluster_data['latitude'],
-                    c=colors[i], label=f'Cluster {i}', alpha=0.6, s=20)
-
-    plt.xlabel('Longitude')
-    plt.ylabel('Latitude')
-    plt.title('Clustering by Location')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'clusters_location.png'), dpi=300)
-    plt.close()
+    _create_scatter_plot(df, 'longitude', 'latitude', 'Clustering by Location',
+                        os.path.join(output_dir, 'clusters_location.png'))
     print("✓ Location plot saved")
 
-    # Brightness vs FRP plot
-    plt.figure(figsize=(12, 8))
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i]
-        plt.scatter(cluster_data['brightness'], cluster_data['frp'],
-                    c=colors[i], label=f'Cluster {i}', alpha=0.6, s=20)
-
-    plt.xlabel('Brightness')
-    plt.ylabel('FRP')
-    plt.title('Brightness vs FRP')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'clusters_brightness_frp.png'), dpi=300)
-    plt.close()
+    _create_scatter_plot(df, 'brightness', 'frp', 'Brightness vs FRP',
+                        os.path.join(output_dir, 'clusters_brightness_frp.png'))
     print("✓ Brightness vs FRP plot saved")
 
 def _add_base_tiles(map_obj, tiles_list):
@@ -289,8 +288,6 @@ def create_simple_maps(df, output_dir):
 
     center_lat = df['latitude'].mean()
     center_lon = df['longitude'].mean()
-    colors = ['red', 'blue', 'green', 'purple', 'orange',
-              'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen']
     n_clusters = df['cluster'].nunique()
 
     # Simple Clusters Map
@@ -307,9 +304,9 @@ def create_simple_maps(df, output_dir):
                 location=[row['latitude'], row['longitude']],
                 radius=5,
                 popup=f"Cluster {i}<br>FRP: {row['frp']:.1f}",
-                color=colors[i],
+                color=COLORS_SIMPLE[i],
                 fill=True,
-                fillColor=colors[i],
+                fillColor=COLORS_SIMPLE[i],
                 fillOpacity=0.7
             ).add_to(map_simple_clusters)
 
@@ -338,8 +335,6 @@ def create_advanced_maps(df, output_dir):
 
     center_lat = df['latitude'].mean()
     center_lon = df['longitude'].mean()
-    colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
-              '#1abc9c', '#e67e22', '#34495e', '#95a5a6', '#d35400']
     n_clusters = df['cluster'].nunique()
 
     # Calculate cluster statistics
@@ -381,7 +376,7 @@ def create_advanced_maps(df, output_dir):
             icon_create_function=f'''
                 function(cluster) {{
                     return L.divIcon({{
-                        html: '<div style="background-color: {colors[i]}; opacity: 0.7; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">' + cluster.getChildCount() + '</div>',
+                        html: '<div style="background-color: {COLORS_ADVANCED[i]}; opacity: 0.7; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">' + cluster.getChildCount() + '</div>',
                         className: 'marker-cluster',
                         iconSize: L.point(30, 30)
                     }});
@@ -392,16 +387,16 @@ def create_advanced_maps(df, output_dir):
         # Add markers
         for _, row in cluster_data.iterrows():
             radius = 6 if row['frp'] > 20 else 4 if row['frp'] > 10 else 3
-            popup_html = _create_popup_html(i, row, stats, colors[i])
+            popup_html = _create_popup_html(i, row, stats, COLORS_ADVANCED[i])
 
             folium.CircleMarker(
                 location=[row['latitude'], row['longitude']],
                 radius=radius,
                 popup=folium.Popup(popup_html, max_width=250),
                 tooltip=f"Cluster {i} | FRP: {row['frp']:.1f}",
-                color=colors[i],
+                color=COLORS_ADVANCED[i],
                 fill=True,
-                fillColor=colors[i],
+                fillColor=COLORS_ADVANCED[i],
                 fillOpacity=0.8,
                 weight=2
             ).add_to(marker_cluster)
@@ -417,7 +412,7 @@ def create_advanced_maps(df, output_dir):
 
     # Add layer control and legend
     folium.LayerControl(collapsed=False).add_to(map_clusters)
-    map_clusters.get_root().html.add_child(folium.Element(_create_legend_html(cluster_stats, colors)))
+    map_clusters.get_root().html.add_child(folium.Element(_create_legend_html(cluster_stats, COLORS_ADVANCED)))
 
     map_clusters.save(os.path.join(output_dir, 'advanced_clusters.html'))
     print("✓ Advanced cluster map saved")
