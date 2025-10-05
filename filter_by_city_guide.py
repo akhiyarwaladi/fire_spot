@@ -5,18 +5,24 @@ FILTER DATA FIRE SPOTS BERDASARKAN WILAYAH
 Script ini akan memfilter data fire spots berdasarkan wilayah (provinsi/kota besar)
 dan menyimpannya ke folder data/filtered/
 
+DUA METODE FILTERING:
+1. Bounding Box - Lebih cepat, menggunakan kotak lat/lon
+2. GeoJSON Polygon - Lebih akurat, menggunakan batas wilayah sebenarnya
+
 CATATAN PENTING:
 - Fire spots biasanya di luar kota (hutan, perkebunan)
 - Bounding box dibuat lebih luas untuk capture area sekitar
-- Data disimpan di: data/filtered/method_1_bounding_box/
+- Data disimpan di: data/filtered/method_1_bounding_box/ atau method_2_geojson/
 
 Author: Untuk keperluan pengajaran Data Mining
 """
 
 import pandas as pd
 import os
+import json
 import folium
 from folium.plugins import HeatMap
+from shapely.geometry import shape, Point
 
 # =============================================================================
 # WILAYAH INDONESIA DENGAN BOUNDING BOX (DIPERLUAS!)
@@ -95,15 +101,55 @@ def filter_by_region(df, region_name):
 
     return filtered
 
+def filter_by_geojson(df, province_name, geojson_data):
+    """Filter dataframe menggunakan polygon GeoJSON yang lebih akurat"""
+    # Cari provinsi di GeoJSON
+    province_feature = None
+    for feature in geojson_data['features']:
+        # Normalize nama provinsi untuk matching
+        geojson_name = feature['properties']['Propinsi'].upper().replace(' ', '_')
+        search_name = province_name.upper().replace(' ', '_')
+
+        # Coba berbagai variasi nama
+        if geojson_name == search_name or \
+           search_name in geojson_name or \
+           geojson_name in search_name:
+            province_feature = feature
+            break
+
+    if province_feature is None:
+        print(f"   ⚠️  Provinsi '{province_name}' tidak ditemukan di GeoJSON")
+        return None
+
+    # Buat polygon dari GeoJSON
+    polygon = shape(province_feature['geometry'])
+
+    # Filter fire spots yang ada di dalam polygon
+    def is_inside(row):
+        point = Point(row['longitude'], row['latitude'])
+        return polygon.contains(point)
+
+    # Apply filter
+    print(f"   🔍 Filtering dengan polygon (ini bisa lebih lama)...")
+    filtered = df[df.apply(is_inside, axis=1)].copy()
+
+    return filtered
+
 # =============================================================================
 # FUNGSI UTAMA
 # =============================================================================
 
-def generate_filtered_datasets(regions_to_filter=None):
-    """Generate filtered datasets untuk wilayah yang dipilih"""
+def generate_filtered_datasets(regions_to_filter=None, method='bounding_box'):
+    """
+    Generate filtered datasets untuk wilayah yang dipilih
+
+    Parameters:
+    - regions_to_filter: List wilayah yang mau di-filter (None = semua)
+    - method: 'bounding_box' atau 'geojson'
+    """
 
     print("="*80)
-    print("GENERATE FILTERED DATA PER WILAYAH")
+    print(f"GENERATE FILTERED DATA PER WILAYAH - METHOD: {method.upper()}")
     print("="*80)
     print()
 
@@ -120,12 +166,35 @@ def generate_filtered_datasets(regions_to_filter=None):
     print(f"   📅 Periode: {df['acq_date'].min()} - {df['acq_date'].max()}")
     print()
 
+    # Load GeoJSON if using geojson method
+    geojson_data = None
+    if method == 'geojson':
+        geojson_path = 'data/geojson/indonesia-province-simple.json'
+        if not os.path.exists(geojson_path):
+            print(f"   ❌ GeoJSON tidak ditemukan: {geojson_path}")
+            print(f"   💡 Download dulu dengan: curl -L https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia-province-simple.json -o {geojson_path}")
+            return
+
+        with open(geojson_path, 'r') as f:
+            geojson_data = json.load(f)
+        print(f"   ✓ GeoJSON loaded: {len(geojson_data['features'])} provinsi")
+        print()
+
     # Determine regions
     if regions_to_filter is None:
-        regions_to_filter = list(INDONESIA_REGIONS.keys())
+        if method == 'bounding_box':
+            regions_to_filter = list(INDONESIA_REGIONS.keys())
+        else:
+            # Untuk GeoJSON, ambil dari file GeoJSON
+            regions_to_filter = [f['properties']['Propinsi'].replace(' ', '_')
+                                for f in geojson_data['features']]
 
     # Create output directory
-    output_dir = 'data/filtered/method_1_bounding_box'
+    if method == 'bounding_box':
+        output_dir = 'data/filtered/method_1_bounding_box'
+    else:
+        output_dir = 'data/filtered/method_2_geojson'
+
     os.makedirs(output_dir, exist_ok=True)
 
     print(f"📁 Output: {output_dir}/")
@@ -141,7 +210,11 @@ def generate_filtered_datasets(regions_to_filter=None):
     for i, region in enumerate(regions_to_filter, 1):
         print(f"\n[{i}/{len(regions_to_filter)}] {region.replace('_', ' ')}")
 
-        df_region = filter_by_region(df, region)
+        # Filter based on method
+        if method == 'bounding_box':
+            df_region = filter_by_region(df, region)
+        else:
+            df_region = filter_by_geojson(df, region, geojson_data)
 
         if df_region is None:
             print(f"   ⚠️  Wilayah tidak ditemukan")
@@ -209,9 +282,10 @@ def generate_filtered_datasets(regions_to_filter=None):
         print("🗺️  GENERATING VISUALIZATION MAPS...")
         print("="*80)
 
-        # Create maps folder
-        maps_dir = 'data/filtered/maps'
+        # Create maps folder inside the method folder
+        maps_dir = os.path.join(output_dir, 'maps')
         os.makedirs(maps_dir, exist_ok=True)
+        print(f"\n📁 Maps directory: {maps_dir}/")
 
         # Map 1: Overview Map - All regions in one map
         print("\n📍 Creating overview map...")
@@ -472,24 +546,49 @@ def interactive_mode():
 if __name__ == '__main__':
     import sys
 
+    # Default method
+    method = 'bounding_box'
+
+    # Check for method flag
+    if '--geojson' in sys.argv:
+        method = 'geojson'
+        sys.argv.remove('--geojson')
+
     if len(sys.argv) > 1:
         if sys.argv[1] == '--all':
-            generate_filtered_datasets(regions_to_filter=None)
+            generate_filtered_datasets(regions_to_filter=None, method=method)
         elif sys.argv[1] == '--sumatera':
             sumatera = ['Aceh', 'Sumatera_Utara', 'Riau', 'Kepulauan_Riau',
                        'Sumatera_Barat', 'Jambi', 'Sumatera_Selatan',
                        'Bengkulu', 'Lampung', 'Bangka_Belitung']
-            generate_filtered_datasets(regions_to_filter=sumatera)
+            generate_filtered_datasets(regions_to_filter=sumatera, method=method)
         elif sys.argv[1] == '--kalimantan':
             kalimantan = ['Kalimantan_Barat', 'Kalimantan_Tengah', 'Kalimantan_Selatan',
                          'Kalimantan_Timur', 'Kalimantan_Utara']
-            generate_filtered_datasets(regions_to_filter=kalimantan)
+            generate_filtered_datasets(regions_to_filter=kalimantan, method=method)
         elif sys.argv[1] == '--help':
+            print("="*80)
+            print("FILTER FIRE SPOTS BY REGION")
+            print("="*80)
+            print()
             print("Usage:")
-            print("  python filter_by_city_guide.py                # Interactive")
-            print("  python filter_by_city_guide.py --all          # All provinces")
-            print("  python filter_by_city_guide.py --sumatera     # Sumatera only")
-            print("  python filter_by_city_guide.py --kalimantan   # Kalimantan only")
+            print("  python filter_by_city_guide.py [options] [--geojson]")
+            print()
+            print("Options:")
+            print("  (none)                  # Interactive mode")
+            print("  --all                   # All provinces")
+            print("  --sumatera              # Sumatera only")
+            print("  --kalimantan            # Kalimantan only")
+            print()
+            print("Methods:")
+            print("  --geojson               # Use GeoJSON polygon (more accurate)")
+            print("  (default)               # Use bounding box (faster)")
+            print()
+            print("Examples:")
+            print("  python filter_by_city_guide.py --sumatera")
+            print("  python filter_by_city_guide.py --sumatera --geojson")
+            print("  python filter_by_city_guide.py --all --geojson")
+            print()
         else:
             print("❌ Invalid. Use --help")
     else:
