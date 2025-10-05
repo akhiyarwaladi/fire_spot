@@ -2,17 +2,9 @@
 FILTER DATA FIRE SPOTS BERDASARKAN WILAYAH
 ===========================================
 
-Script ini akan memfilter data fire spots berdasarkan wilayah (provinsi/kota besar)
-dan menyimpannya ke folder data/filtered/
-
 DUA METODE FILTERING:
-1. Bounding Box - Lebih cepat, menggunakan kotak lat/lon
-2. GeoJSON Polygon - Lebih akurat, menggunakan batas wilayah sebenarnya
-
-CATATAN PENTING:
-- Fire spots biasanya di luar kota (hutan, perkebunan)
-- Bounding box dibuat lebih luas untuk capture area sekitar
-- Data disimpan di: data/filtered/method_1_bounding_box/ atau method_2_geojson/
+1. Bounding Box - Cepat, menggunakan kotak lat/lon
+2. GeoJSON Polygon - Akurat, menggunakan batas wilayah sebenarnya
 
 Author: Untuk keperluan pengajaran Data Mining
 """
@@ -25,14 +17,11 @@ from folium.plugins import HeatMap
 from shapely.geometry import shape, Point
 
 # =============================================================================
-# WILAYAH INDONESIA DENGAN BOUNDING BOX (DIPERLUAS!)
+# WILAYAH INDONESIA DENGAN BOUNDING BOX
 # =============================================================================
 
-# Fire spots biasanya BUKAN di pusat kota, tapi di area sekitar
-# Jadi bounding box dibuat lebih luas untuk capture hutan/perkebunan
-
 INDONESIA_REGIONS = {
-    # ========== SUMATERA (PRIORITAS - Hotspot Area!) ==========
+    # SUMATERA
     'Aceh': {'lat': (2.5, 6.0), 'lon': (95.0, 98.5)},
     'Sumatera_Utara': {'lat': (1.0, 4.5), 'lon': (98.0, 100.5)},
     'Riau': {'lat': (-1.5, 2.5), 'lon': (100.0, 105.0)},
@@ -44,7 +33,7 @@ INDONESIA_REGIONS = {
     'Lampung': {'lat': (-6.0, -3.5), 'lon': (103.5, 106.0)},
     'Bangka_Belitung': {'lat': (-3.5, -1.5), 'lon': (105.0, 108.5)},
 
-    # ========== JAWA ==========
+    # JAWA
     'Banten': {'lat': (-7.0, -5.5), 'lon': (105.0, 107.0)},
     'DKI_Jakarta': {'lat': (-6.5, -5.8), 'lon': (106.5, 107.2)},
     'Jawa_Barat': {'lat': (-8.0, -5.5), 'lon': (106.0, 109.0)},
@@ -52,14 +41,14 @@ INDONESIA_REGIONS = {
     'DI_Yogyakarta': {'lat': (-8.5, -7.5), 'lon': (110.0, 111.0)},
     'Jawa_Timur': {'lat': (-9.0, -6.5), 'lon': (111.0, 115.0)},
 
-    # ========== KALIMANTAN (Hotspot Area!) ==========
+    # KALIMANTAN
     'Kalimantan_Barat': {'lat': (-3.5, 2.5), 'lon': (108.5, 112.5)},
     'Kalimantan_Tengah': {'lat': (-4.0, 0.5), 'lon': (111.0, 115.5)},
     'Kalimantan_Selatan': {'lat': (-4.5, -1.5), 'lon': (114.0, 117.0)},
     'Kalimantan_Timur': {'lat': (-2.5, 3.0), 'lon': (115.0, 119.5)},
     'Kalimantan_Utara': {'lat': (1.5, 4.5), 'lon': (115.5, 118.5)},
 
-    # ========== SULAWESI ==========
+    # SULAWESI
     'Sulawesi_Utara': {'lat': (0.0, 2.5), 'lon': (123.5, 127.0)},
     'Gorontalo': {'lat': (0.0, 1.5), 'lon': (121.5, 123.5)},
     'Sulawesi_Tengah': {'lat': (-3.5, 1.5), 'lon': (119.5, 124.0)},
@@ -67,12 +56,12 @@ INDONESIA_REGIONS = {
     'Sulawesi_Selatan': {'lat': (-7.0, -2.5), 'lon': (118.5, 121.5)},
     'Sulawesi_Tenggara': {'lat': (-6.0, -2.5), 'lon': (120.5, 124.0)},
 
-    # ========== BALI & NUSA TENGGARA ==========
+    # BALI & NUSA TENGGARA
     'Bali': {'lat': (-8.8, -8.0), 'lon': (114.5, 115.8)},
     'NTB': {'lat': (-9.5, -8.0), 'lon': (115.5, 119.5)},
     'NTT': {'lat': (-11.0, -8.0), 'lon': (118.5, 125.0)},
 
-    # ========== MALUKU & PAPUA ==========
+    # MALUKU & PAPUA
     'Maluku': {'lat': (-9.0, -2.0), 'lon': (124.0, 132.0)},
     'Maluku_Utara': {'lat': (-2.5, 3.5), 'lon': (124.0, 129.5)},
     'Papua_Barat': {'lat': (-4.5, 1.5), 'lon': (130.0, 135.0)},
