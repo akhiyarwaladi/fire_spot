@@ -1,0 +1,23 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Data files (uncomment if you don't want to commit large data files)
+# *.csv
+# *.zip
+
+# OS
+.DS_Store
+Thumbs.db
