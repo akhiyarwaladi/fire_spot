@@ -18,6 +18,21 @@ __pycache__/
 # *.csv
 # *.zip
 
+# Output folders
+output/
+
+# Old generated files
+clustering_jakarta.png
+clustering_scatter.png
+elbow_curve.png
+fire_spots_clustering_map.html
+fire_spots_heatmap.html
+heatmap_jakarta.html
+map_jakarta_clusters.html
+map_*_clusters.html
+heatmap_*.html
+clustering_*.png
+
 # OS
 .DS_Store
 Thumbs.db
