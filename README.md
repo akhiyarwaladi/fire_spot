@@ -71,7 +71,7 @@ fire_spot/
 │   │   ├── DL_FIRE_J2V-C2_669817.zip          # Original zip
 │   │   └── fire_nrt_J2V-C2_669817.csv         # 57,767 fire spots
 │   ├── geojson/                                # GeoJSON boundaries
-│   │   └── indonesia-province-simple.json      # 32 provinsi
+│   │   └── indonesia-prov-38.json              # 38 provinsi
 │   └── filtered/                               # Data per wilayah
 │       ├── method_1_bounding_box/
 │       │   ├── Riau.csv                       # 3,881 fire spots
