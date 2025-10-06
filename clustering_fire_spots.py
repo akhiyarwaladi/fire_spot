@@ -38,9 +38,10 @@ COLORS_ADVANCED = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
 # ⚙️ KONFIGURASI - EDIT DI SINI
 # =============================================================================
 
-DATA_SOURCE = 'data/raw/fire_nrt_J2V-C2_669817.csv'  # Semua Indonesia
+# DATA_SOURCE = 'data/raw/fire_nrt_J2V-C2_669817.csv'  # Semua Indonesia
 # DATA_SOURCE = 'data/filtered/method_1_bounding_box/Jambi.csv'
 # DATA_SOURCE = 'data/filtered/method_2_geojson/Jambi.csv'
+DATA_SOURCE = 'data/filtered/method_2_geojson/Riau.csv'
 
 NUM_CLUSTERS = 5
 SAMPLE_SIZE = None  # None untuk pakai semua data
@@ -460,6 +461,183 @@ def create_advanced_maps(df, output_dir):
     map_heat.save(os.path.join(output_dir, 'advanced_heatmap.html'))
     print("✓ Advanced heatmap saved")
 
+def _create_landcover_legend_html():
+    """Helper: Create landcover legend HTML"""
+    return '''
+    <div style="position: fixed; top: 80px; right: 10px; width: 220px;
+                background-color: rgba(255,255,255,0.95); border: 2px solid #333; z-index: 9999;
+                color: #333; font-size: 11px; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+        <h4 style="margin: 0 0 8px 0; border-bottom: 2px solid #2ecc71; padding-bottom: 5px; color: #2ecc71;">
+            🌍 ESA WorldCover 2021
+        </h4>
+        <div style="font-size: 10px;">
+            <div style="margin: 4px 0;"><span style="background: #006400; padding: 2px 6px; color: white;">■</span> Tree cover</div>
+            <div style="margin: 4px 0;"><span style="background: #ffbb22; padding: 2px 6px; color: white;">■</span> Shrubland</div>
+            <div style="margin: 4px 0;"><span style="background: #ffff4c; padding: 2px 6px; color: black;">■</span> Grassland</div>
+            <div style="margin: 4px 0;"><span style="background: #f096ff; padding: 2px 6px; color: black;">■</span> Cropland</div>
+            <div style="margin: 4px 0;"><span style="background: #fa0000; padding: 2px 6px; color: white;">■</span> Built-up</div>
+            <div style="margin: 4px 0;"><span style="background: #b4b4b4; padding: 2px 6px; color: white;">■</span> Bare/sparse</div>
+            <div style="margin: 4px 0;"><span style="background: #0064c8; padding: 2px 6px; color: white;">■</span> Water bodies</div>
+            <div style="margin: 4px 0;"><span style="background: #0096a0; padding: 2px 6px; color: white;">■</span> Wetland</div>
+            <div style="margin: 4px 0;"><span style="background: #00cf75; padding: 2px 6px; color: white;">■</span> Mangroves</div>
+        </div>
+        <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #ddd; font-size: 9px; color: #666;">
+            Source: ESA WorldCover 10m
+        </div>
+    </div>
+    '''
+
+def create_landcover_overlay_maps(df, output_dir):
+    """Create 2 maps with landcover overlay"""
+    print("\n🗺️  STEP 8c: Landcover Overlay Maps")
+    print("-" * 80)
+
+    center_lat = df['latitude'].mean()
+    center_lon = df['longitude'].mean()
+    n_clusters = df['cluster'].nunique()
+
+    # Calculate cluster statistics
+    cluster_stats = []
+    for i in range(n_clusters):
+        cluster_data = df[df['cluster'] == i]
+        cluster_stats.append({
+            'id': i,
+            'count': len(cluster_data),
+            'avg_frp': cluster_data['frp'].mean(),
+            'max_frp': cluster_data['frp'].max(),
+            'min_frp': cluster_data['frp'].min()
+        })
+
+    # MAP 1: Clusters + Landcover Overlay
+    map_cluster_lc = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=9,
+        tiles='CartoDB positron'
+    )
+
+    # Add alternative base maps
+    _add_base_tiles(map_cluster_lc, [
+        {'tiles': 'OpenStreetMap', 'name': 'Street Map', 'overlay': False, 'control': True},
+        {'tiles': 'CartoDB dark_matter', 'name': 'Dark', 'overlay': False, 'control': True}
+    ])
+
+    # Add ESA WorldCover WMS layer
+    folium.WmsTileLayer(
+        url='https://services.terrascope.be/wms/v2',
+        layers='WORLDCOVER_2021_MAP',
+        name='🌍 ESA WorldCover 2021',
+        fmt='image/png',
+        transparent=True,
+        overlay=True,
+        control=True,
+        opacity=0.6,
+        attr='ESA WorldCover 2021'
+    ).add_to(map_cluster_lc)
+
+    # Add clusters
+    for i in range(n_clusters):
+        cluster_data = df[df['cluster'] == i]
+        stats = cluster_stats[i]
+
+        marker_cluster = MarkerCluster(
+            name=f'🔥 Cluster {i} ({stats["count"]} pts)',
+            overlay=True,
+            control=True,
+            icon_create_function=f'''
+                function(cluster) {{
+                    return L.divIcon({{
+                        html: '<div style="background-color: {COLORS_ADVANCED[i]}; opacity: 0.8; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">' + cluster.getChildCount() + '</div>',
+                        className: 'marker-cluster',
+                        iconSize: L.point(30, 30)
+                    }});
+                }}
+            '''
+        )
+
+        for _, row in cluster_data.iterrows():
+            radius = 6 if row['frp'] > 20 else 4 if row['frp'] > 10 else 3
+            popup_html = _create_popup_html(i, row, stats, COLORS_ADVANCED[i])
+
+            folium.CircleMarker(
+                location=[row['latitude'], row['longitude']],
+                radius=radius,
+                popup=folium.Popup(popup_html, max_width=250),
+                tooltip=f"Cluster {i} | FRP: {row['frp']:.1f}",
+                color=COLORS_ADVANCED[i],
+                fill=True,
+                fillColor=COLORS_ADVANCED[i],
+                fillOpacity=0.8,
+                weight=2
+            ).add_to(marker_cluster)
+
+        marker_cluster.add_to(map_cluster_lc)
+
+    # Add controls
+    Fullscreen(position='topleft').add_to(map_cluster_lc)
+    folium.LayerControl(collapsed=False).add_to(map_cluster_lc)
+    map_cluster_lc.get_root().html.add_child(folium.Element(_create_landcover_legend_html()))
+    map_cluster_lc.get_root().html.add_child(folium.Element(_create_legend_html(cluster_stats, COLORS_ADVANCED)))
+
+    map_cluster_lc.save(os.path.join(output_dir, 'overlay_clusters_landcover.html'))
+    print("✓ Cluster + Landcover overlay map saved")
+
+    # MAP 2: Heatmap + Landcover Overlay
+    map_heat_lc = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=9,
+        tiles='CartoDB positron'
+    )
+
+    # Add base map options
+    _add_base_tiles(map_heat_lc, [
+        {'tiles': 'OpenStreetMap', 'name': 'Street Map', 'overlay': False, 'control': True},
+        {'tiles': 'CartoDB dark_matter', 'name': 'Dark', 'overlay': False, 'control': True}
+    ])
+
+    # Add ESA WorldCover WMS layer
+    folium.WmsTileLayer(
+        url='https://services.terrascope.be/wms/v2',
+        layers='WORLDCOVER_2021_MAP',
+        name='🌍 ESA WorldCover 2021',
+        fmt='image/png',
+        transparent=True,
+        overlay=True,
+        control=True,
+        opacity=0.6,
+        attr='ESA WorldCover 2021'
+    ).add_to(map_heat_lc)
+
+    # Heatmap with gradient
+    heat_data = [[row['latitude'], row['longitude'], row['frp']]
+                 for _, row in df.iterrows()]
+
+    HeatMap(
+        heat_data,
+        min_opacity=0.3,
+        max_opacity=0.8,
+        radius=20,
+        blur=25,
+        gradient={
+            0.0: 'blue',
+            0.3: 'lime',
+            0.5: 'yellow',
+            0.7: 'orange',
+            1.0: 'red'
+        },
+        name='🔥 Fire Intensity Heatmap',
+        overlay=True,
+        control=True
+    ).add_to(map_heat_lc)
+
+    # Add controls and info panels
+    Fullscreen(position='topleft').add_to(map_heat_lc)
+    folium.LayerControl(collapsed=False).add_to(map_heat_lc)
+    map_heat_lc.get_root().html.add_child(folium.Element(_create_landcover_legend_html()))
+    map_heat_lc.get_root().html.add_child(folium.Element(_create_info_panel_html(df)))
+
+    map_heat_lc.save(os.path.join(output_dir, 'overlay_heatmap_landcover.html'))
+    print("✓ Heatmap + Landcover overlay map saved")
+
 def print_summary(dataset_name, df, n_clusters, silhouette, davies_bouldin, output_dir):
     """Print final summary"""
     print("\n" + "="*80)
@@ -485,14 +663,16 @@ Output: {output_dir}/
   │   ├── clusters_location.png
   │   └── clusters_brightness_frp.png
   └── maps/
-      ├── simple_clusters.html          ← Simple: Cluster markers
-      ├── simple_heatmap.html           ← Simple: Heatmap
-      ├── advanced_clusters.html        ← Advanced: MarkerCluster + controls
-      └── advanced_heatmap.html         ← Advanced: Heatmap + layer control
+      ├── simple_clusters.html              ← Simple: Cluster markers
+      ├── simple_heatmap.html               ← Simple: Heatmap
+      ├── advanced_clusters.html            ← Advanced: MarkerCluster + controls
+      ├── advanced_heatmap.html             ← Advanced: Heatmap + layer control
+      ├── overlay_clusters_landcover.html   ← NEW: Clusters + ESA WorldCover
+      └── overlay_heatmap_landcover.html    ← NEW: Heatmap + ESA WorldCover
 
 Next:
   • Buka file HTML untuk lihat peta interaktif
-  • Analisis karakteristik tiap cluster
+  • Analisis cluster di landcover mana (lihat overlay maps!)
   • Coba dataset lain dengan ubah DATA_SOURCE
 """)
     print("="*80)
@@ -550,6 +730,7 @@ def main():
     plot_clusters(df_clean, dirs['plots'])
     create_simple_maps(df_clean, dirs['maps'])
     create_advanced_maps(df_clean, dirs['maps'])
+    create_landcover_overlay_maps(df_clean, dirs['maps'])
 
     # Summary
     print_summary(dataset_name, df_clean, NUM_CLUSTERS,
