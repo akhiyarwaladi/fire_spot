@@ -11,7 +11,6 @@ Author: Untuk keperluan pengajaran Data Mining
 """
 
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.cluster import KMeans
@@ -29,10 +28,21 @@ sns.set_style('whitegrid')
 # CONSTANTS
 # =============================================================================
 
-# Color palettes for visualization
 COLORS_SIMPLE = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 COLORS_ADVANCED = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
                    '#1abc9c', '#e67e22', '#34495e', '#95a5a6', '#d35400']
+
+# Base map tiles configurations
+BASE_TILES = {
+    'topo': {'tiles': 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', 'attr': 'OpenTopoMap',
+             'name': 'Topographic', 'overlay': False, 'control': True},
+    'light': {'tiles': 'CartoDB positron', 'name': 'Light', 'overlay': False, 'control': True},
+    'dark': {'tiles': 'CartoDB dark_matter', 'name': 'Dark', 'overlay': False, 'control': True},
+    'street': {'tiles': 'OpenStreetMap', 'name': 'Street Map', 'overlay': False, 'control': True}
+}
+
+# Heatmap gradient
+HEATMAP_GRADIENT = {0.0: 'blue', 0.3: 'lime', 0.5: 'yellow', 0.7: 'orange', 1.0: 'red'}
 
 # =============================================================================
 # ⚙️ KONFIGURASI - EDIT DI SINI
@@ -48,7 +58,7 @@ SAMPLE_SIZE = None  # None untuk pakai semua data
 FEATURES = ['latitude', 'longitude', 'brightness', 'frp']
 
 # =============================================================================
-# FUNCTIONS
+# CORE FUNCTIONS
 # =============================================================================
 
 def setup_output_dirs(dataset_name):
@@ -85,8 +95,7 @@ def perform_eda(df, features, output_dir):
     print("-" * 80)
 
     # Statistics
-    stats = df[features].describe()
-    stats.to_csv(os.path.join(output_dir, 'statistics.csv'))
+    df[features].describe().to_csv(os.path.join(output_dir, 'statistics.csv'))
     print("✓ Statistics saved")
 
     # Distribution plots
@@ -153,7 +162,7 @@ def perform_clustering(data, n_clusters):
     clusters = kmeans.fit_predict(data)
 
     print("✓ Clustering complete")
-    return clusters, kmeans
+    return clusters
 
 def evaluate_clustering(data, clusters):
     """Evaluate clustering quality"""
@@ -183,45 +192,61 @@ def save_cluster_stats(df, features, output_file):
 
     print("\n✓ Cluster stats saved")
 
-def _create_scatter_plot(df, x_col, y_col, title, output_file):
-    """Helper: Create scatter plot for clusters"""
-    n_clusters = df['cluster'].nunique()
-    plt.figure(figsize=(12, 8))
-
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i]
-        plt.scatter(cluster_data[x_col], cluster_data[y_col],
-                    c=COLORS_SIMPLE[i], label=f'Cluster {i}', alpha=0.6, s=20)
-
-    plt.xlabel(x_col.capitalize())
-    plt.ylabel(y_col.upper() if y_col == 'frp' else y_col.capitalize())
-    plt.title(title)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=300)
-    plt.close()
-
 def plot_clusters(df, output_dir):
     """Plot cluster visualizations"""
     print("\n🎨 STEP 7: Visualization")
     print("-" * 80)
 
-    _create_scatter_plot(df, 'longitude', 'latitude', 'Clustering by Location',
-                        os.path.join(output_dir, 'clusters_location.png'))
-    print("✓ Location plot saved")
+    for (x_col, y_col, title, filename) in [
+        ('longitude', 'latitude', 'Clustering by Location', 'clusters_location.png'),
+        ('brightness', 'frp', 'Brightness vs FRP', 'clusters_brightness_frp.png')
+    ]:
+        plt.figure(figsize=(12, 8))
+        for i in range(df['cluster'].nunique()):
+            cluster_data = df[df['cluster'] == i]
+            plt.scatter(cluster_data[x_col], cluster_data[y_col],
+                        c=COLORS_SIMPLE[i], label=f'Cluster {i}', alpha=0.6, s=20)
 
-    _create_scatter_plot(df, 'brightness', 'frp', 'Brightness vs FRP',
-                        os.path.join(output_dir, 'clusters_brightness_frp.png'))
+        plt.xlabel(x_col.capitalize())
+        plt.ylabel(y_col.upper() if y_col == 'frp' else y_col.capitalize())
+        plt.title(title)
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, filename), dpi=300)
+        plt.close()
+
+    print("✓ Location plot saved")
     print("✓ Brightness vs FRP plot saved")
 
-def _add_base_tiles(map_obj, tiles_list):
-    """Helper: Add multiple tile layers to map"""
-    for tiles_config in tiles_list:
-        folium.TileLayer(**tiles_config).add_to(map_obj)
+# =============================================================================
+# MAP HELPER FUNCTIONS
+# =============================================================================
 
-def _create_popup_html(cluster_id, row, stats, color):
-    """Helper: Create popup HTML for cluster marker"""
+def get_map_center_and_stats(df):
+    """Get map center coordinates and cluster statistics"""
+    center = (df['latitude'].mean(), df['longitude'].mean())
+
+    stats = []
+    for i in range(df['cluster'].nunique()):
+        cluster_data = df[df['cluster'] == i]
+        stats.append({
+            'id': i,
+            'count': len(cluster_data),
+            'avg_frp': cluster_data['frp'].mean(),
+            'max_frp': cluster_data['frp'].max(),
+            'min_frp': cluster_data['frp'].min()
+        })
+
+    return center, stats
+
+def add_base_tiles(map_obj, tile_keys):
+    """Add base tiles to map"""
+    for key in tile_keys:
+        folium.TileLayer(**BASE_TILES[key]).add_to(map_obj)
+
+def create_popup_html(cluster_id, row, stats, color):
+    """Create popup HTML for cluster marker"""
     return f"""
     <div style="font-family: Arial; min-width: 200px;">
         <h4 style="margin: 0 0 10px 0; color: {color}; border-bottom: 2px solid {color}; padding-bottom: 5px;">
@@ -236,8 +261,8 @@ def _create_popup_html(cluster_id, row, stats, color):
     </div>
     """
 
-def _create_legend_html(cluster_stats, colors):
-    """Helper: Create legend HTML for cluster map"""
+def create_cluster_legend_html(cluster_stats, colors):
+    """Create cluster legend HTML"""
     items = [f'''
         <div style="margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid {colors[s['id']]};">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -264,8 +289,8 @@ def _create_legend_html(cluster_stats, colors):
     </div>
     '''
 
-def _create_info_panel_html(df):
-    """Helper: Create info panel HTML for heatmap"""
+def create_heatmap_info_html(df):
+    """Create heatmap info panel HTML"""
     return f'''
     <div style="position: fixed; bottom: 50px; right: 10px; width: 200px;
                 background-color: rgba(0,0,0,0.8); border: 2px solid #333; z-index: 9999;
@@ -282,187 +307,8 @@ def _create_info_panel_html(df):
     </div>
     '''
 
-def create_simple_maps(df, output_dir):
-    """Create 2 simple interactive maps"""
-    print("\n🗺️  STEP 8a: Simple Maps")
-    print("-" * 80)
-
-    center_lat = df['latitude'].mean()
-    center_lon = df['longitude'].mean()
-    n_clusters = df['cluster'].nunique()
-
-    # Simple Clusters Map
-    map_simple_clusters = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=5,
-        tiles='OpenStreetMap'
-    )
-
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i]
-        for _, row in cluster_data.iterrows():
-            folium.CircleMarker(
-                location=[row['latitude'], row['longitude']],
-                radius=5,
-                popup=f"Cluster {i}<br>FRP: {row['frp']:.1f}",
-                color=COLORS_SIMPLE[i],
-                fill=True,
-                fillColor=COLORS_SIMPLE[i],
-                fillOpacity=0.7
-            ).add_to(map_simple_clusters)
-
-    map_simple_clusters.save(os.path.join(output_dir, 'simple_clusters.html'))
-    print("✓ Simple cluster map saved")
-
-    # Simple Heatmap
-    map_simple_heat = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=5,
-        tiles='OpenStreetMap'
-    )
-
-    heat_data = [[row['latitude'], row['longitude'], row['frp']]
-                 for _, row in df.iterrows()]
-    HeatMap(heat_data).add_to(map_simple_heat)
-
-    map_simple_heat.save(os.path.join(output_dir, 'simple_heatmap.html'))
-    print("✓ Simple heatmap saved")
-
-
-def create_advanced_maps(df, output_dir):
-    """Create 2 advanced interactive maps with enhanced features"""
-    print("\n🗺️  STEP 8b: Advanced Maps")
-    print("-" * 80)
-
-    center_lat = df['latitude'].mean()
-    center_lon = df['longitude'].mean()
-    n_clusters = df['cluster'].nunique()
-
-    # Calculate cluster statistics
-    cluster_stats = []
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i]
-        cluster_stats.append({
-            'id': i,
-            'count': len(cluster_data),
-            'avg_frp': cluster_data['frp'].mean(),
-            'max_frp': cluster_data['frp'].max(),
-            'min_frp': cluster_data['frp'].min()
-        })
-
-    # ADVANCED Clusters Map
-    map_clusters = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=9,
-        tiles='OpenStreetMap'
-    )
-
-    # Add alternative base maps
-    _add_base_tiles(map_clusters, [
-        {'tiles': 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', 'attr': 'OpenTopoMap',
-         'name': 'Topographic', 'overlay': False, 'control': True},
-        {'tiles': 'CartoDB positron', 'name': 'Light', 'overlay': False, 'control': True}
-    ])
-
-    # Add clusters with MarkerCluster for better performance
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i]
-        stats = cluster_stats[i]
-
-        # Create marker cluster group
-        marker_cluster = MarkerCluster(
-            name=f'🔥 Cluster {i} ({stats["count"]} points, Avg FRP: {stats["avg_frp"]:.1f})',
-            overlay=True,
-            control=True,
-            icon_create_function=f'''
-                function(cluster) {{
-                    return L.divIcon({{
-                        html: '<div style="background-color: {COLORS_ADVANCED[i]}; opacity: 0.7; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">' + cluster.getChildCount() + '</div>',
-                        className: 'marker-cluster',
-                        iconSize: L.point(30, 30)
-                    }});
-                }}
-            '''
-        )
-
-        # Add markers
-        for _, row in cluster_data.iterrows():
-            radius = 6 if row['frp'] > 20 else 4 if row['frp'] > 10 else 3
-            popup_html = _create_popup_html(i, row, stats, COLORS_ADVANCED[i])
-
-            folium.CircleMarker(
-                location=[row['latitude'], row['longitude']],
-                radius=radius,
-                popup=folium.Popup(popup_html, max_width=250),
-                tooltip=f"Cluster {i} | FRP: {row['frp']:.1f}",
-                color=COLORS_ADVANCED[i],
-                fill=True,
-                fillColor=COLORS_ADVANCED[i],
-                fillOpacity=0.8,
-                weight=2
-            ).add_to(marker_cluster)
-
-        marker_cluster.add_to(map_clusters)
-
-    # Add MiniMap for navigation
-    minimap = MiniMap(toggle_display=True, position='bottomleft')
-    map_clusters.add_child(minimap)
-
-    # Add Fullscreen button
-    Fullscreen(position='topleft').add_to(map_clusters)
-
-    # Add layer control and legend
-    folium.LayerControl(collapsed=False).add_to(map_clusters)
-    map_clusters.get_root().html.add_child(folium.Element(_create_legend_html(cluster_stats, COLORS_ADVANCED)))
-
-    map_clusters.save(os.path.join(output_dir, 'advanced_clusters.html'))
-    print("✓ Advanced cluster map saved")
-
-    # ADVANCED Heatmap
-    map_heat = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=9,
-        tiles=None  # No default tiles, so LayerControl can switch
-    )
-
-    # Add base map options
-    _add_base_tiles(map_heat, [
-        {'tiles': 'CartoDB dark_matter', 'name': 'Dark (Default)', 'overlay': False, 'control': True},
-        {'tiles': 'OpenStreetMap', 'name': 'Street Map', 'overlay': False, 'control': True},
-        {'tiles': 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', 'attr': 'OpenTopoMap',
-         'name': 'Topographic', 'overlay': False, 'control': True},
-        {'tiles': 'CartoDB positron', 'name': 'Light', 'overlay': False, 'control': True}
-    ])
-
-    # Heatmap with gradient
-    heat_data = [[row['latitude'], row['longitude'], row['frp']]
-                 for _, row in df.iterrows()]
-
-    HeatMap(
-        heat_data,
-        min_opacity=0.3,
-        max_opacity=0.8,
-        radius=20,
-        blur=25,
-        gradient={
-            0.0: 'blue',
-            0.3: 'lime',
-            0.5: 'yellow',
-            0.7: 'orange',
-            1.0: 'red'
-        }
-    ).add_to(map_heat)
-
-    # Add controls and info panel
-    Fullscreen(position='topleft').add_to(map_heat)
-    folium.LayerControl().add_to(map_heat)
-    map_heat.get_root().html.add_child(folium.Element(_create_info_panel_html(df)))
-
-    map_heat.save(os.path.join(output_dir, 'advanced_heatmap.html'))
-    print("✓ Advanced heatmap saved")
-
-def _create_landcover_legend_html():
-    """Helper: Create landcover legend HTML"""
+def create_landcover_legend_html():
+    """Create landcover legend HTML"""
     return '''
     <div style="position: fixed; top: 80px; right: 10px; width: 220px;
                 background-color: rgba(255,255,255,0.95); border: 2px solid #333; z-index: 9999;
@@ -487,153 +333,173 @@ def _create_landcover_legend_html():
     </div>
     '''
 
+def add_cluster_markers(map_obj, df, cluster_stats, colors, show_marker_cluster=True):
+    """Add cluster markers to map"""
+    for i in range(df['cluster'].nunique()):
+        cluster_data = df[df['cluster'] == i]
+        stats = cluster_stats[i]
+
+        if show_marker_cluster:
+            marker_cluster = MarkerCluster(
+                name=f'🔥 Cluster {i} ({stats["count"]} pts)',
+                overlay=True,
+                control=True,
+                icon_create_function=f'''
+                    function(cluster) {{
+                        return L.divIcon({{
+                            html: '<div style="background-color: {colors[i]}; opacity: 0.8; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">' + cluster.getChildCount() + '</div>',
+                            className: 'marker-cluster',
+                            iconSize: L.point(30, 30)
+                        }});
+                    }}
+                '''
+            )
+
+            for _, row in cluster_data.iterrows():
+                radius = 6 if row['frp'] > 20 else 4 if row['frp'] > 10 else 3
+                folium.CircleMarker(
+                    location=[row['latitude'], row['longitude']],
+                    radius=radius,
+                    popup=folium.Popup(create_popup_html(i, row, stats, colors[i]), max_width=250),
+                    tooltip=f"Cluster {i} | FRP: {row['frp']:.1f}",
+                    color=colors[i],
+                    fill=True,
+                    fillColor=colors[i],
+                    fillOpacity=0.8,
+                    weight=2
+                ).add_to(marker_cluster)
+
+            marker_cluster.add_to(map_obj)
+        else:
+            for _, row in cluster_data.iterrows():
+                folium.CircleMarker(
+                    location=[row['latitude'], row['longitude']],
+                    radius=5,
+                    popup=f"Cluster {i}<br>FRP: {row['frp']:.1f}",
+                    color=colors[i],
+                    fill=True,
+                    fillColor=colors[i],
+                    fillOpacity=0.7
+                ).add_to(map_obj)
+
+def add_heatmap(map_obj, df, with_name=False):
+    """Add heatmap to map"""
+    heat_data = [[row['latitude'], row['longitude'], row['frp']] for _, row in df.iterrows()]
+
+    heatmap_params = {
+        'data': heat_data,
+        'min_opacity': 0.3,
+        'max_opacity': 0.8,
+        'radius': 20,
+        'blur': 25,
+        'gradient': HEATMAP_GRADIENT
+    }
+
+    if with_name:
+        heatmap_params.update({'name': '🔥 Fire Intensity Heatmap', 'overlay': True, 'control': True})
+
+    HeatMap(**heatmap_params).add_to(map_obj)
+
+def add_landcover_layer(map_obj):
+    """Add ESA WorldCover WMS layer"""
+    folium.WmsTileLayer(
+        url='https://services.terrascope.be/wms/v2',
+        layers='WORLDCOVER_2021_MAP',
+        name='🌍 ESA WorldCover 2021',
+        fmt='image/png',
+        transparent=True,
+        overlay=True,
+        control=True,
+        opacity=0.6,
+        attr='ESA WorldCover 2021'
+    ).add_to(map_obj)
+
+# =============================================================================
+# MAP CREATION FUNCTIONS
+# =============================================================================
+
+def create_simple_maps(df, output_dir):
+    """Create 2 simple interactive maps"""
+    print("\n🗺️  STEP 8a: Simple Maps")
+    print("-" * 80)
+
+    center, _ = get_map_center_and_stats(df)
+
+    # Simple Clusters Map
+    map_simple_clusters = folium.Map(location=center, zoom_start=5, tiles='OpenStreetMap')
+    add_cluster_markers(map_simple_clusters, df, [{}] * df['cluster'].nunique(), COLORS_SIMPLE, show_marker_cluster=False)
+    map_simple_clusters.save(os.path.join(output_dir, 'simple_clusters.html'))
+    print("✓ Simple cluster map saved")
+
+    # Simple Heatmap
+    map_simple_heat = folium.Map(location=center, zoom_start=5, tiles='OpenStreetMap')
+    add_heatmap(map_simple_heat, df)
+    map_simple_heat.save(os.path.join(output_dir, 'simple_heatmap.html'))
+    print("✓ Simple heatmap saved")
+
+def create_advanced_maps(df, output_dir):
+    """Create 2 advanced interactive maps with enhanced features"""
+    print("\n🗺️  STEP 8b: Advanced Maps")
+    print("-" * 80)
+
+    center, cluster_stats = get_map_center_and_stats(df)
+
+    # Advanced Clusters Map
+    map_clusters = folium.Map(location=center, zoom_start=9, tiles='OpenStreetMap')
+    add_base_tiles(map_clusters, ['topo', 'light'])
+    add_cluster_markers(map_clusters, df, cluster_stats, COLORS_ADVANCED)
+
+    MiniMap(toggle_display=True, position='bottomleft').add_to(map_clusters)
+    Fullscreen(position='topleft').add_to(map_clusters)
+    folium.LayerControl(collapsed=False).add_to(map_clusters)
+    map_clusters.get_root().html.add_child(folium.Element(create_cluster_legend_html(cluster_stats, COLORS_ADVANCED)))
+
+    map_clusters.save(os.path.join(output_dir, 'advanced_clusters.html'))
+    print("✓ Advanced cluster map saved")
+
+    # Advanced Heatmap
+    map_heat = folium.Map(location=center, zoom_start=9, tiles=None)
+    add_base_tiles(map_heat, ['dark', 'street', 'topo', 'light'])
+    add_heatmap(map_heat, df)
+
+    Fullscreen(position='topleft').add_to(map_heat)
+    folium.LayerControl().add_to(map_heat)
+    map_heat.get_root().html.add_child(folium.Element(create_heatmap_info_html(df)))
+
+    map_heat.save(os.path.join(output_dir, 'advanced_heatmap.html'))
+    print("✓ Advanced heatmap saved")
+
 def create_landcover_overlay_maps(df, output_dir):
     """Create 2 maps with landcover overlay"""
     print("\n🗺️  STEP 8c: Landcover Overlay Maps")
     print("-" * 80)
 
-    center_lat = df['latitude'].mean()
-    center_lon = df['longitude'].mean()
-    n_clusters = df['cluster'].nunique()
+    center, cluster_stats = get_map_center_and_stats(df)
 
-    # Calculate cluster statistics
-    cluster_stats = []
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i]
-        cluster_stats.append({
-            'id': i,
-            'count': len(cluster_data),
-            'avg_frp': cluster_data['frp'].mean(),
-            'max_frp': cluster_data['frp'].max(),
-            'min_frp': cluster_data['frp'].min()
-        })
+    # Clusters + Landcover
+    map_cluster_lc = folium.Map(location=center, zoom_start=9, tiles='CartoDB positron')
+    add_base_tiles(map_cluster_lc, ['street', 'dark'])
+    add_landcover_layer(map_cluster_lc)
+    add_cluster_markers(map_cluster_lc, df, cluster_stats, COLORS_ADVANCED)
 
-    # MAP 1: Clusters + Landcover Overlay
-    map_cluster_lc = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=9,
-        tiles='CartoDB positron'
-    )
-
-    # Add alternative base maps
-    _add_base_tiles(map_cluster_lc, [
-        {'tiles': 'OpenStreetMap', 'name': 'Street Map', 'overlay': False, 'control': True},
-        {'tiles': 'CartoDB dark_matter', 'name': 'Dark', 'overlay': False, 'control': True}
-    ])
-
-    # Add ESA WorldCover WMS layer
-    folium.WmsTileLayer(
-        url='https://services.terrascope.be/wms/v2',
-        layers='WORLDCOVER_2021_MAP',
-        name='🌍 ESA WorldCover 2021',
-        fmt='image/png',
-        transparent=True,
-        overlay=True,
-        control=True,
-        opacity=0.6,
-        attr='ESA WorldCover 2021'
-    ).add_to(map_cluster_lc)
-
-    # Add clusters
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i]
-        stats = cluster_stats[i]
-
-        marker_cluster = MarkerCluster(
-            name=f'🔥 Cluster {i} ({stats["count"]} pts)',
-            overlay=True,
-            control=True,
-            icon_create_function=f'''
-                function(cluster) {{
-                    return L.divIcon({{
-                        html: '<div style="background-color: {COLORS_ADVANCED[i]}; opacity: 0.8; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">' + cluster.getChildCount() + '</div>',
-                        className: 'marker-cluster',
-                        iconSize: L.point(30, 30)
-                    }});
-                }}
-            '''
-        )
-
-        for _, row in cluster_data.iterrows():
-            radius = 6 if row['frp'] > 20 else 4 if row['frp'] > 10 else 3
-            popup_html = _create_popup_html(i, row, stats, COLORS_ADVANCED[i])
-
-            folium.CircleMarker(
-                location=[row['latitude'], row['longitude']],
-                radius=radius,
-                popup=folium.Popup(popup_html, max_width=250),
-                tooltip=f"Cluster {i} | FRP: {row['frp']:.1f}",
-                color=COLORS_ADVANCED[i],
-                fill=True,
-                fillColor=COLORS_ADVANCED[i],
-                fillOpacity=0.8,
-                weight=2
-            ).add_to(marker_cluster)
-
-        marker_cluster.add_to(map_cluster_lc)
-
-    # Add controls
     Fullscreen(position='topleft').add_to(map_cluster_lc)
     folium.LayerControl(collapsed=False).add_to(map_cluster_lc)
-    map_cluster_lc.get_root().html.add_child(folium.Element(_create_landcover_legend_html()))
-    map_cluster_lc.get_root().html.add_child(folium.Element(_create_legend_html(cluster_stats, COLORS_ADVANCED)))
+    map_cluster_lc.get_root().html.add_child(folium.Element(create_landcover_legend_html()))
+    map_cluster_lc.get_root().html.add_child(folium.Element(create_cluster_legend_html(cluster_stats, COLORS_ADVANCED)))
 
     map_cluster_lc.save(os.path.join(output_dir, 'overlay_clusters_landcover.html'))
     print("✓ Cluster + Landcover overlay map saved")
 
-    # MAP 2: Heatmap + Landcover Overlay
-    map_heat_lc = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=9,
-        tiles='CartoDB positron'
-    )
+    # Heatmap + Landcover
+    map_heat_lc = folium.Map(location=center, zoom_start=9, tiles='CartoDB positron')
+    add_base_tiles(map_heat_lc, ['street', 'dark'])
+    add_landcover_layer(map_heat_lc)
+    add_heatmap(map_heat_lc, df, with_name=True)
 
-    # Add base map options
-    _add_base_tiles(map_heat_lc, [
-        {'tiles': 'OpenStreetMap', 'name': 'Street Map', 'overlay': False, 'control': True},
-        {'tiles': 'CartoDB dark_matter', 'name': 'Dark', 'overlay': False, 'control': True}
-    ])
-
-    # Add ESA WorldCover WMS layer
-    folium.WmsTileLayer(
-        url='https://services.terrascope.be/wms/v2',
-        layers='WORLDCOVER_2021_MAP',
-        name='🌍 ESA WorldCover 2021',
-        fmt='image/png',
-        transparent=True,
-        overlay=True,
-        control=True,
-        opacity=0.6,
-        attr='ESA WorldCover 2021'
-    ).add_to(map_heat_lc)
-
-    # Heatmap with gradient
-    heat_data = [[row['latitude'], row['longitude'], row['frp']]
-                 for _, row in df.iterrows()]
-
-    HeatMap(
-        heat_data,
-        min_opacity=0.3,
-        max_opacity=0.8,
-        radius=20,
-        blur=25,
-        gradient={
-            0.0: 'blue',
-            0.3: 'lime',
-            0.5: 'yellow',
-            0.7: 'orange',
-            1.0: 'red'
-        },
-        name='🔥 Fire Intensity Heatmap',
-        overlay=True,
-        control=True
-    ).add_to(map_heat_lc)
-
-    # Add controls and info panels
     Fullscreen(position='topleft').add_to(map_heat_lc)
     folium.LayerControl(collapsed=False).add_to(map_heat_lc)
-    map_heat_lc.get_root().html.add_child(folium.Element(_create_landcover_legend_html()))
-    map_heat_lc.get_root().html.add_child(folium.Element(_create_info_panel_html(df)))
+    map_heat_lc.get_root().html.add_child(folium.Element(create_landcover_legend_html()))
+    map_heat_lc.get_root().html.add_child(folium.Element(create_heatmap_info_html(df)))
 
     map_heat_lc.save(os.path.join(output_dir, 'overlay_heatmap_landcover.html'))
     print("✓ Heatmap + Landcover overlay map saved")
@@ -714,17 +580,14 @@ def main():
 
     # Elbow method
     inertias, silhouettes = find_optimal_k(features_scaled)
-    plot_elbow(inertias, silhouettes, (2, 11),
-               os.path.join(dirs['plots'], 'elbow.png'))
+    plot_elbow(inertias, silhouettes, (2, 11), os.path.join(dirs['plots'], 'elbow.png'))
 
     # Clustering
-    clusters, kmeans = perform_clustering(features_scaled, NUM_CLUSTERS)
-    df_clean['cluster'] = clusters
+    df_clean['cluster'] = perform_clustering(features_scaled, NUM_CLUSTERS)
 
     # Evaluation
-    silhouette, davies_bouldin = evaluate_clustering(features_scaled, clusters)
-    save_cluster_stats(df_clean, FEATURES,
-                      os.path.join(dirs['eda'], 'cluster_stats.csv'))
+    silhouette, davies_bouldin = evaluate_clustering(features_scaled, df_clean['cluster'])
+    save_cluster_stats(df_clean, FEATURES, os.path.join(dirs['eda'], 'cluster_stats.csv'))
 
     # Visualization
     plot_clusters(df_clean, dirs['plots'])
@@ -733,8 +596,7 @@ def main():
     create_landcover_overlay_maps(df_clean, dirs['maps'])
 
     # Summary
-    print_summary(dataset_name, df_clean, NUM_CLUSTERS,
-                 silhouette, davies_bouldin, dirs['base'])
+    print_summary(dataset_name, df_clean, NUM_CLUSTERS, silhouette, davies_bouldin, dirs['base'])
 
 if __name__ == '__main__':
     try:
