@@ -50,8 +50,8 @@ HEATMAP_GRADIENT = {0.0: 'blue', 0.3: 'lime', 0.5: 'yellow', 0.7: 'orange', 1.0:
 
 # DATA_SOURCE = 'data/raw/fire_nrt_J2V-C2_669817.csv'  # Semua Indonesia
 # DATA_SOURCE = 'data/filtered/method_1_bounding_box/Jambi.csv'
-# DATA_SOURCE = 'data/filtered/method_2_geojson/Jambi.csv'
-DATA_SOURCE = 'data/filtered/method_2_geojson/Riau.csv'
+DATA_SOURCE = 'data/filtered/method_2_geojson/Jambi.csv'
+# DATA_SOURCE = 'data/filtered/method_2_geojson/Riau.csv'
 
 NUM_CLUSTERS = 5
 SAMPLE_SIZE = None  # None untuk pakai semua data
