@@ -1,7 +1,6 @@
-pandas
-numpy
-matplotlib
-seaborn
-scikit-learn
-folium
-shapely
+pandas>=2.2,<4
+numpy>=1.26,<3
+matplotlib>=3.8,<4
+scikit-learn>=1.5,<2
+folium>=0.20,<1
+shapely>=2.0,<3

@@ -1,38 +1,13 @@
-# Virtual Environment
+.venv/
 venv/
 env/
-ENV/
-.venv
-
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Data files (uncomment if you don't want to commit large data files)
-# *.csv
-# *.zip
-
-# Output folders
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 output/
-
-# Old generated files
-clustering_jakarta.png
-clustering_scatter.png
-elbow_curve.png
-fire_spots_clustering_map.html
-fire_spots_heatmap.html
-heatmap_jakarta.html
-map_jakarta_clusters.html
-map_*_clusters.html
-heatmap_*.html
-clustering_*.png
-
-# OS
+data/raw/*.tmp
 .DS_Store
 Thumbs.db

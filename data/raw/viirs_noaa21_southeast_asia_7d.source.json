@@ -1,0 +1,11 @@
+{
+  "product": "VIIRS NOAA-21 Collection 2, 375 m, near real-time",
+  "region": "Southeast Asia",
+  "source_url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_SouthEast_Asia_7d.csv",
+  "downloaded_at_utc": "2026-10-28T15:40:39+00:00",
+  "last_modified": "Wed, 28 Oct 2026 14:45:39 GMT",
+  "observed_from_utc": "2026-10-21T03:06:00+00:00",
+  "observed_to_utc": "2026-10-27T20:34:00+00:00",
+  "rows": 58158,
+  "sha256": "db7b152a2643897047ac3c33bd6f9bdca0c7d58a470d9ed34741457baf4261e8"
+}

@@ -1,436 +1,152 @@
-# 🔥 Clustering Titik Api (Fire Spots) dengan K-Means
+# Titik api VIIRS Indonesia
 
-Analisis clustering data titik api (fire hotspots) di Indonesia menggunakan algoritma K-Means. Data berasal dari VIIRS (Visible Infrared Imaging Radiometer Suite) Fire Detection.
+Unduh deteksi VIIRS NOAA-21 terbaru dari NASA FIRMS, pilih wilayah, lalu lihat kelompok deteksi di peta. Analisis memakai K-Means, dengan wilayah default Sumatra dan jumlah kelompok awal K=5. Kode memakai modul Python biasa, tanpa framework aplikasi atau notebook.
 
-## 📋 Daftar Isi
-- [Fitur](#fitur)
-- [Setup](#setup)
-- [Workflow](#workflow)
-- [Metode Filtering](#metode-filtering)
-- [Cara Penggunaan](#cara-penggunaan)
-- [Struktur Folder](#struktur-folder)
-- [Interpretasi Hasil](#interpretasi-hasil)
-- [Untuk Mahasiswa](#untuk-mahasiswa)
+## Mulai
 
-## ✨ Fitur
+Gunakan Python 3.10 atau lebih baru. Jalankan dari folder repository:
 
-### 1. **Filtering Data Per Wilayah**
-- **Method 1 - Bounding Box**: Filtering cepat menggunakan kotak lat/lon
-- **Method 2 - GeoJSON**: Filtering akurat menggunakan batas provinsi sebenarnya
-- Support 35+ provinsi di Indonesia
-- Fokus pada hotspot area: Sumatera & Kalimantan
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 
-### 2. **Clustering dengan K-Means**
-- Preprocessing & normalisasi data
-- Elbow Method untuk menentukan K optimal
-- Evaluasi: Silhouette Score & Davies-Bouldin Index
-- Clustering berdasarkan: latitude, longitude, brightness, FRP
-
-### 3. **Visualisasi Lengkap**
-- ✅ Scatter plots (lokasi, brightness vs FRP)
-- ✅ Peta interaktif dengan Folium
-- ✅ Heatmap intensitas titik api
-- ✅ Visualisasi bounding box & polygon
-- ✅ EDA plots (histogram, distribusi)
-
-## 🚀 Setup
-
-### Local Environment
-```bash
-# Clone repository
-git clone https://github.com/akhiyarwaladi/fire_spot.git
-cd fire_spot
-
-# Buat virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# atau
-venv\Scripts\activate     # Windows
-
-# Install dependencies
-pip install -r requirements.txt
+python -m fire_spot download
+python -m fire_spot analyze
 ```
 
-### Google Colab
-```python
-# Upload file CSV dan script Python ke Colab
+Di Linux/macOS, aktivasi dengan `source .venv/bin/activate`. Jika PowerShell membatasi aktivasi, gunakan `.venv\Scripts\python.exe` sebagai pengganti `python`.
 
-# Install dependencies
-!pip install pandas numpy matplotlib seaborn scikit-learn folium shapely
+CSV snapshot terbaru sudah disertakan, sehingga `analyze` juga bisa dijalankan tanpa mengunduh ulang. Perintah `download` mengambil feed publik tujuh hari; tidak memerlukan akun atau API key. CSV asli disimpan bersama tanggal pengamatan, URL sumber, waktu unduh, dan checksum SHA-256 dalam berkas `.source.json`. Feed yang deteksi terakhirnya lebih tua dari tiga hari ditolak agar tidak mengganti snapshot lokal dengan data usang. Unduhan gagal tidak menimpa CSV yang sudah ada.
 
-# Jalankan script
-!python clustering_fire_spots.py
+Buka hasil melalui HTTP lokal:
+
+```powershell
+python -m http.server 8765 --bind 127.0.0.1
 ```
 
-## 📂 Struktur Folder
+[Peta Sumatra](http://127.0.0.1:8765/output/sumatra/maps/index.html). Hentikan server dengan `Ctrl+C` setelah selesai.
 
+## Snapshot bawaan
+
+Data diunduh pada **28 Oktober 2026**. Feed NOAA-21 memuat **58.158 deteksi Asia Tenggara** dengan waktu pengamatan 21 Oktober 2026 pukul 03.06 UTC sampai 27 Oktober 2026 pukul 20.34 UTC. Tanggal unduh berbeda dari tanggal pengamatan.
+
+Setelah validasi, penyaringan confidence nominal/tinggi, dan pemilihan polygon Indonesia:
+
+| Wilayah | Deteksi |
+| --- | ---: |
+| Indonesia | 38.232 |
+| Sumatra, termasuk provinsi kepulauannya | 5.116 |
+| Kalimantan | 22.210 |
+| Sumatera Selatan | 3.504 |
+| Jambi | 663 |
+| Lampung | 513 |
+
+Jumlah kelompok ditentukan melalui `--clusters` (default K=5). Angka deteksi di atas menggambarkan snapshot bawaan, bukan data langsung yang diperbarui otomatis. Jalankan `download` dan `analyze` untuk memperbarui hasil.
+
+## Pilihan analisis
+
+```powershell
+# K-Means pada seluruh Sumatra, K=5
+python -m fire_spot analyze
+python -m fire_spot analyze --clusters 3
+
+# Satu provinsi atau seluruh Indonesia
+python -m fire_spot analyze --region jambi --clusters 4
+python -m fire_spot analyze --region indonesia --clusters 5
+
+python -m fire_spot analyze --help
 ```
+
+`--data` memilih CSV lain; `--boundaries` memilih GeoJSON lain. `--basemap topo` memilih OpenTopoMap. `--include-low-confidence` menyertakan confidence rendah. Default path berasal dari lokasi repository; path yang diberikan lewat CLI mengikuti folder kerja terminal. Pemanggilan `python -m fire_spot` dilakukan dari repository.
+
+Alurnya: baca dan validasi data, pilih wilayah, standardisasi empat fitur dengan `StandardScaler`, jalankan `KMeans`, lalu simpan evaluasi dan peta. Fitur yang dipakai adalah `latitude`, `longitude`, `brightness`, dan `frp`. `random_state=42` dan `n_init=10` membuat percobaan dapat diulang dengan input dan versi pustaka yang sama.
+
+Jumlah kelompok mengikuti `--clusters`; K=5 berarti data dibagi menjadi lima kelompok, bukan ditemukan lima kejadian kebakaran. Kurva elbow dan silhouette menguji K dari dua sampai `--max-k` (default 10), dibatasi jumlah baris dan kombinasi fitur unik. Kurva membantu membandingkan pilihan K; K akhir tetap mengikuti pilihan pengguna. Silhouette memakai sampel tetap maksimal 2.000 titik, sedangkan Davies-Bouldin memakai seluruh data analisis. Jika sampel tidak mendukung perhitungan silhouette, skor dicatat kosong.
+
+K-Means menghitung jarak pada fitur yang distandardisasi, bukan kilometer. Anggota satu cluster dapat berjauhan karena pengelompokan juga mempertimbangkan brightness dan FRP. Nomor cluster bukan peringkat bahaya. Seluruh tanggal dalam feed digabung; pengamatan pada hari berbeda tetap dipertahankan.
+
+## Filter CSV per provinsi
+
+```powershell
+# Default: provinsi Sumatra, menggunakan polygon
+python -m fire_spot filter
+python -m fire_spot filter --regions Jambi Riau
+python -m fire_spot filter --regions "Kepulauan Riau"
+python -m fire_spot filter --all --no-maps
+
+# Kotak perkiraan, untuk membandingkan metode
+python -m fire_spot filter --sumatra --method bounding_box
+```
+
+Hasil berada di `output/filtered/geojson/` atau `output/filtered/bounding_box/`. Setiap provinsi mendapat CSV, termasuk yang kosong; `summary.csv` mencatat jumlah deteksi. Satu peta `regions.html` menampilkan semua wilayah terpilih. `--no-maps` hanya memperbarui CSV dan ringkasan. Bounding box dapat tumpang tindih dan memasukkan deteksi dari provinsi tetangga.
+
+Batas bawaan bernama `indonesia_provinces_34.geojson` karena berisi **34 fitur provinsi**, bukan 38. Berkas ini belum mengikuti pemekaran provinsi terbaru di Papua. Beberapa geometri diperbaiki di memori dengan Shapely `make_valid` dan dilaporkan melalui log; sumber tidak ditulis ulang. Untuk statistik lintas Indonesia, setiap deteksi diberi maksimal satu provinsi agar tidak dihitung ganda di batas yang bersinggungan.
+
+## Struktur dan hasil
+
+```text
 fire_spot/
-├── data/
-│   ├── raw/                                    # Data mentah
-│   │   ├── DL_FIRE_J2V-C2_669817.zip          # Original zip
-│   │   └── fire_nrt_J2V-C2_669817.csv         # 57,767 fire spots
-│   ├── geojson/                                # GeoJSON boundaries
-│   │   └── indonesia-prov-38.json              # 38 provinsi
-│   └── filtered/                               # Data per wilayah
-│       ├── method_1_bounding_box/
-│       │   ├── Riau.csv                       # 3,881 fire spots
-│       │   ├── Sumatera_Selatan.csv           # 3,432 fire spots
-│       │   └── maps/                          # Visual verification
-│       │       ├── overview_all_regions.html
-│       │       └── Riau.html
-│       └── method_2_geojson/
-│           ├── Riau.csv                       # 2,992 fire spots (lebih akurat)
-│           └── maps/
-│               └── Riau.html
-│
-├── output/                                     # Hasil clustering
-│   └── {dataset_name}/                         # Auto-generated per dataset
-│       ├── eda/                               # Exploratory Data Analysis
-│       │   ├── statistics.csv
-│       │   ├── cluster_stats.csv
-│       │   └── distribution.png
-│       ├── plots/                             # Scatter plots
-│       │   ├── elbow.png
-│       │   ├── clusters_location.png
-│       │   └── clusters_brightness_frp.png
-│       └── maps/                              # Interactive maps
-│           ├── clusters.html                  # ← Buka di browser!
-│           └── heatmap.html
-│
-├── filter_by_city_guide.py                    # Filter data per wilayah
-├── clustering_fire_spots.py                   # Script utama clustering
-└── requirements.txt                           # Dependencies
+  __main__.py              # Pintu masuk python -m fire_spot
+  cli.py                   # Perintah download, filter, analyze
+  config.py                # Path default dan daftar wilayah
+  download.py              # Unduhan resmi NASA dan catatan sumber
+  data.py                  # Pembacaan dan validasi CSV
+  filtering.py             # Batas provinsi dan pemilihan wilayah
+  analysis.py              # K-Means, evaluasi, ringkasan, dan grafik
+  maps.py                  # Peta Folium dan kontrol tampilannya
+data/
+  boundaries/
+    indonesia_provinces_34.geojson
+  raw/
+    viirs_noaa21_southeast_asia_7d.csv
+    viirs_noaa21_southeast_asia_7d.source.json
+tests/
+output/                    # Hasil turunan, diabaikan Git
+  sumatra/
+    detections.csv         # Data valid, metadata, provinsi, dan label cluster
+    clusters.csv           # Jumlah deteksi, pusat, FRP, dan tanggal per cluster
+    k_scores.csv           # Inertia dan silhouette untuk kandidat K
+    daily_counts.csv       # Deteksi harian dalam UTC, termasuk hari tanpa deteksi
+    province_counts.csv    # Jumlah deteksi per provinsi pada wilayah analisis
+    indonesia_counts.csv   # Pembanding provinsi Indonesia dari feed yang sama
+    metrics.json           # Parameter, jumlah, dan sumber yang dapat diperiksa
+    report.md              # Temuan dan batas interpretasi
+    charts/overview.png
+    charts/elbow.png
+    maps/
+      index.html
+      clusters.html
+      heatmap.html
 ```
 
-## 🔄 Workflow
+Semua nama hasil memakai huruf kecil dengan pemisah garis bawah. Hasil filter, peta, dan grafik tidak disimpan di dalam `data/`. Berkas mentah Juli 2025 dan hasil lama sudah dikeluarkan dari alur aktif. Enam variasi peta lama diringkas menjadi dua; lapisan WMS WorldCover yang tidak stabil juga dihapus.
 
-### **STEP 1: Filter Data Per Wilayah**
+Pengulangan analisis untuk wilayah dan folder output yang sama menimpa hasil sebelumnya. Gunakan `--output-dir` berbeda untuk membandingkan nilai K. `clusters.csv` merangkum setiap kelompok; seluruh deteksi beserta labelnya ada di `detections.csv`.
 
-#### Mode Interaktif:
-```bash
-python filter_by_city_guide.py
-```
-Pilih opsi:
-- `1` = Filter SEMUA wilayah
-- `2` = Filter wilayah SUMATERA (10 provinsi)
-- `3` = Filter wilayah KALIMANTAN (5 provinsi)
-- `4` = Custom
+## Membaca hasil secara tepat
 
-#### Mode Command Line:
-```bash
-# Bounding Box (cepat)
-python filter_by_city_guide.py --sumatera
-python filter_by_city_guide.py --kalimantan
-python filter_by_city_guide.py --all
+VIIRS mendeteksi anomali panas pada piksel sekitar 375 m. Deteksi dapat berasal dari kebakaran vegetasi, pembakaran pertanian, gunung api, atau sumber panas lain. Satu kebakaran dapat menghasilkan banyak deteksi dan diamati kembali oleh satelit. Karena itu, kelompok pada peta merupakan **kandidat area aktivitas panas**, sedangkan jumlah cluster belum sama dengan jumlah kejadian karhutla. Verifikasi membutuhkan tutupan lahan, citra lain, atau informasi lapangan. Rujukan: [deskripsi produk VIIRS NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/content/descriptions/FIRMS_VIIRS_Firehotspots.html).
 
-# GeoJSON (akurat)
-python filter_by_city_guide.py --sumatera --geojson
-python filter_by_city_guide.py --all --geojson
+Data ini dapat menunjukkan pemusatan deteksi terkini di Sumatera Selatan. Untuk menyimpulkan kenaikan karhutla, perlu periode pembanding dengan sensor, cakupan waktu, dan penyaringan yang sama. Jumlah harian juga dipengaruhi awan, lintasan, dan keterlambatan pengolahan NRT; hari di tepi jendela dapat parsial. Snapshot tujuh hari ini belum membuktikan kenaikan dibanding minggu sebelumnya.
 
-# Help
-python filter_by_city_guide.py --help
-```
+Kolom `bright_ti4` dari feed baru dibaca sebagai `brightness`; CSV asli tetap utuh. Confidence `nominal/high/low` maupun `n/h/l` dikenali. Baris dengan fitur kosong, tak hingga, koordinat tidak valid, brightness tidak positif, atau FRP negatif diabaikan dengan log. Duplikat baris identik dihapus; pengamatan pada waktu berbeda tetap dipertahankan. Analisis periode membutuhkan `acq_date` yang valid.
 
-**Output:**
-- CSV files di `data/filtered/method_1_bounding_box/` atau `method_2_geojson/`
-- HTML maps untuk verifikasi visual
+Pada peta cluster, lingkaran bernomor menggabungkan marker untuk tampilan saat zoom jauh. Klik untuk memperbesar; warna tiap titik mengikuti label hasil analisis. Angka pada lingkaran merupakan jumlah marker yang digabung, sedangkan jumlah cluster analisis tercatat di `metrics.json`.
 
----
+Heatmap memakai bobot `FRP / FRP maksimum dataset`, sehingga warnanya relatif dan juga dipengaruhi kepadatan serta zoom. Grafik harian memakai UTC, bukan waktu setempat. Deteksi di luar batas polygon tidak masuk statistik Indonesia.
 
-### **STEP 2: Edit Konfigurasi Clustering**
+Peta dasar memakai URL OpenStreetMap `https://tile.openstreetmap.org/{z}/{x}/{y}.png` dengan atribusi; OpenTopoMap tersedia sebagai alternatif. Tile serta JavaScript/CSS Folium memerlukan internet. Buka melalui server HTTP lokal agar Referer dikirim. CARTO tanpa API key tidak dipakai karena dapat mengembalikan gambar “API KEY REQUIRED” meskipun status HTTP sukses. Rujukan: [kebijakan tile OpenStreetMap](https://operations.osmfoundation.org/policies/tiles/) dan [API key CARTO](https://www.carto.com/basemaps/apikey/index.html).
 
-Buka `clustering_fire_spots.py` dan edit:
+## Sumber dan pemeriksaan
 
-```python
-# =============================================================================
-# ⚙️ KONFIGURASI - EDIT DI SINI
-# =============================================================================
+[Feed CSV resmi NOAA-21 tujuh hari](https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_SouthEast_Asia_7d.csv) berasal dari [NASA FIRMS Active Fire Data](https://firms.modaps.eosdis.nasa.gov/content/active_fire/). Feed bergulir dan isinya berubah. Untuk arsip di luar tujuh hari, gunakan layanan [Archive Download](https://firms.modaps.eosdis.nasa.gov/download/); akses API wilayah memerlukan MAP_KEY. Pipeline ini memakai satu satelit agar jumlah deteksi tidak mencampur sensor dengan frekuensi lintasan berbeda.
 
-# Pilih sumber data
-DATA_SOURCE = 'data/raw/fire_nrt_J2V-C2_669817.csv'                    # Semua Indonesia
-# DATA_SOURCE = 'data/filtered/method_1_bounding_box/Riau.csv'        # Riau (bounding box)
-# DATA_SOURCE = 'data/filtered/method_2_geojson/Riau.csv'             # Riau (geojson)
-
-# Jumlah cluster
-NUM_CLUSTERS = 5
-
-# Sampling (None = pakai semua data, atau set angka misal 10000)
-SAMPLE_SIZE = 10000  # Ubah ke None untuk pakai semua data
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m ruff check .
+python -m ruff format --check .
+python -m pytest -q
 ```
 
----
-
-### **STEP 3: Jalankan Clustering**
-
-```bash
-python clustering_fire_spots.py
-```
-
-**Proses yang dilakukan:**
-1. ✅ Load Data
-2. ✅ Exploratory Data Analysis (EDA)
-3. ✅ Preprocessing & Normalization
-4. ✅ Elbow Method (cari K optimal)
-5. ✅ K-Means Clustering
-6. ✅ Evaluation Metrics
-7. ✅ Generate Visualizations
-8. ✅ Create Interactive Maps
-
----
-
-### **STEP 4: Analisis Hasil**
-
-```bash
-# Buka peta interaktif di browser
-firefox output/fire_nrt_J2V-C2_669817/maps/clusters.html
-firefox output/Riau/maps/clusters.html
-
-# Atau double-click file HTML
-```
-
-**File yang dihasilkan:**
-- `eda/statistics.csv` - Statistik deskriptif
-- `eda/cluster_stats.csv` - Karakteristik setiap cluster
-- `plots/elbow.png` - Grafik untuk menentukan K optimal
-- `plots/clusters_location.png` - Distribusi spatial
-- `maps/clusters.html` - **Peta interaktif** ← BUKA INI!
-- `maps/heatmap.html` - Heatmap intensitas
-
-## 🗺️ Metode Filtering
-
-### **Method 1 - Bounding Box** (Lebih Cepat)
-✅ Menggunakan kotak latitude/longitude
-✅ Cepat untuk dataset besar
-⚠️ Bisa include area di luar batas provinsi sebenarnya
-
-**Contoh: Riau = 3,881 fire spots**
-
-### **Method 2 - GeoJSON** (Lebih Akurat)
-✅ Menggunakan polygon batas provinsi dari OpenStreetMap
-✅ Akurat mengikuti batas wilayah administratif
-⚠️ Sedikit lebih lambat (point-in-polygon check)
-
-**Contoh: Riau = 2,992 fire spots (23% lebih akurat!)**
-
-### Perbandingan Visual
-Buka kedua map side-by-side untuk membandingkan:
-```bash
-firefox data/filtered/method_1_bounding_box/maps/Riau.html
-firefox data/filtered/method_2_geojson/maps/Riau.html
-```
-
-## 🎯 Cara Penggunaan
-
-### **Contoh 1: Analisis Semua Indonesia**
-```bash
-# Edit clustering_fire_spots.py:
-#   DATA_SOURCE = 'data/raw/fire_nrt_J2V-C2_669817.csv'
-#   SAMPLE_SIZE = 10000
-
-python clustering_fire_spots.py
-
-# Hasil di: output/fire_nrt_J2V-C2_669817/
-```
-
-### **Contoh 2: Analisis Riau (Bounding Box)**
-```bash
-# 1. Filter Riau
-python filter_by_city_guide.py --sumatera
-
-# 2. Edit clustering_fire_spots.py:
-#   DATA_SOURCE = 'data/filtered/method_1_bounding_box/Riau.csv'
-#   SAMPLE_SIZE = None  # Pakai semua data
-
-# 3. Jalankan clustering
-python clustering_fire_spots.py
-
-# Hasil di: output/Riau/
-```
-
-### **Contoh 3: Analisis Riau (GeoJSON - Lebih Akurat)**
-```bash
-# 1. Filter dengan GeoJSON
-python filter_by_city_guide.py --sumatera --geojson
-
-# 2. Edit clustering_fire_spots.py:
-#   DATA_SOURCE = 'data/filtered/method_2_geojson/Riau.csv'
-
-# 3. Jalankan clustering
-python clustering_fire_spots.py
-
-# Hasil lebih akurat karena hanya fire spots dalam batas provinsi
-```
-
-### **Contoh 4: Analisis Semua Provinsi Sumatera**
-```bash
-# Filter 10 provinsi Sumatera
-python filter_by_city_guide.py --sumatera --geojson
-
-# Untuk setiap provinsi, ubah DATA_SOURCE dan jalankan clustering
-# Misal: Riau, Sumatera_Selatan, Sumatera_Utara, dll
-```
-
-## 📊 Provinsi yang Tersedia
-
-Total: **35 provinsi** (fokus pada hotspot area)
-
-**Sumatera** (10 provinsi - HOTSPOT UTAMA):
-- Aceh, Sumatera Utara, Riau, Kepulauan Riau
-- Sumatera Barat, Jambi, Sumatera Selatan
-- Bengkulu, Lampung, Bangka Belitung
-
-**Kalimantan** (5 provinsi - HOTSPOT UTAMA):
-- Kalimantan Barat, Tengah, Selatan, Timur, Utara
-
-**Jawa** (6 provinsi):
-- Banten, DKI Jakarta, Jawa Barat, Jawa Tengah, DI Yogyakarta, Jawa Timur
-
-**Lainnya**:
-- Sulawesi (6), Bali & Nusa Tenggara (3), Maluku & Papua (4)
-
-## 📈 Interpretasi Hasil
-
-### Metrik Evaluasi
-- **Silhouette Score**: 0.0 - 1.0 (mendekati 1 = lebih baik)
-- **Davies-Bouldin Index**: 0.0 - ∞ (mendekati 0 = lebih baik)
-
-### Karakteristik Cluster (Contoh)
-Setelah clustering, lihat `cluster_stats.csv`:
-- **Cluster 0**: Intensitas rendah (FRP ≈ 3-5)
-- **Cluster 1**: Intensitas sedang (FRP ≈ 6-10)
-- **Cluster 2**: Intensitas tinggi (FRP ≈ 15-30)
-- dst...
-
-### Elbow Method
-Lihat `plots/elbow.png`:
-- Titik "siku" pada grafik = K optimal
-- Balance antara jumlah cluster dan kualitas clustering
-
-## 🎓 Untuk Mahasiswa
-
-### **Tugas 1: Perbandingan Metode Filtering**
-1. Filter Riau dengan kedua metode (bounding box & geojson)
-2. Jalankan clustering untuk kedua dataset
-3. Bandingkan:
-   - Jumlah fire spots
-   - Distribusi cluster
-   - Silhouette Score
-4. Kesimpulan: Metode mana yang lebih baik? Mengapa?
-
-### **Tugas 2: Analisis Multi-Provinsi Sumatera**
-1. Filter 5 provinsi Sumatera: Riau, Sumatera Selatan, Sumatera Utara, Jambi, Bengkulu
-2. Lakukan clustering untuk masing-masing provinsi
-3. Bandingkan:
-   - Provinsi mana yang paling banyak fire spots?
-   - Provinsi mana yang paling tinggi rata-rata FRP-nya?
-   - Pola distribusi cluster: apakah sama atau beda?
-4. Interpretasi: Apa penyebab perbedaan antar provinsi?
-
-### **Tugas 3: Optimasi Jumlah Cluster**
-1. Pilih 1 provinsi (misal: Riau)
-2. Coba K = 3, 5, 7, 10
-3. Untuk setiap K:
-   - Hitung Silhouette Score
-   - Hitung Davies-Bouldin Index
-   - Analisis karakteristik cluster
-4. K berapa yang optimal? Mengapa?
-
-### **Tugas 4: Feature Engineering**
-1. Tambahkan fitur baru: `acq_time` (waktu deteksi)
-2. Clustering dengan fitur tambahan
-3. Bandingkan hasil dengan clustering tanpa fitur waktu
-4. Apakah penambahan fitur waktu meningkatkan kualitas clustering?
-
-### **Tugas 5: Analisis Temporal**
-1. Filter data per bulan (Juli, Agustus, September)
-2. Clustering untuk setiap bulan
-3. Bandingkan pola:
-   - Apakah ada perubahan lokasi cluster?
-   - Apakah ada perubahan intensitas?
-4. Kesimpulan: Bagaimana tren fire spots dari Juli-September?
-
-## 💡 Tips & Troubleshooting
-
-### 1. File tidak ditemukan?
-```
-❌ File tidak ditemukan: data/filtered/method_1_bounding_box/Riau.csv
-💡 Jalankan dulu: python filter_by_city_guide.py --sumatera
-```
-
-### 2. Memory Error?
-Kurangi `SAMPLE_SIZE`:
-```python
-SAMPLE_SIZE = 5000  # Atau lebih kecil
-```
-
-### 3. Ingin ubah jumlah cluster?
-Edit `NUM_CLUSTERS` di `clustering_fire_spots.py`. Lihat grafik `elbow.png` untuk menentukan K optimal.
-
-### 4. Peta tidak muncul?
-Pastikan buka file `.html` dengan browser (Firefox, Chrome, dll). Jangan buka dengan text editor.
-
-### 5. Shapely error saat install?
-```bash
-# Linux
-sudo apt-get install libgeos-dev
-
-# Mac
-brew install geos
-
-# Windows: shapely sudah include binary
-```
-
-## 📦 Dependencies
-
-```
-pandas          # Data manipulation
-numpy           # Numerical operations
-matplotlib      # Static plots
-seaborn         # Statistical visualization
-scikit-learn    # K-Means clustering
-folium          # Interactive maps
-shapely         # Geometric operations (GeoJSON)
-```
-
-Install semua:
-```bash
-pip install -r requirements.txt
-```
-
-## 📚 Dataset
-
-**Source**: VIIRS (Visible Infrared Imaging Radiometer Suite) Fire Detection
-**Period**: 2025-07-01 to 2025-10-01
-**Total**: 57,767 fire spots
-**Coverage**: Indonesia
-
-**Features:**
-- `latitude`, `longitude`: Lokasi
-- `brightness`: Kecerahan (Kelvin)
-- `frp`: Fire Radiative Power (MW)
-- `acq_date`, `acq_time`: Waktu deteksi
-
-**Geographic Distribution:**
-- Kalimantan: ~44% (hotspot utama)
-- Sumatera: ~25% (hotspot utama)
-- Papua: ~18%
-- Others: ~13%
-
-## 🤝 Contributing
-
-Project ini untuk keperluan pengajaran Data Mining. Mahasiswa dan dosen dipersilakan untuk:
-- Menambahkan metode clustering lain (DBSCAN, Hierarchical, dll)
-- Menambahkan fitur baru
-- Meningkatkan visualisasi
-- Menambahkan dokumentasi
-
-## 📄 License
-
-Educational use only.
-
----
-
-**Happy Clustering! 🔥📊**
-
-*Dibuat untuk keperluan pengajaran Data Mining - Analisis Clustering Titik Api Indonesia*
+Tes berjalan tanpa mengakses layanan NASA atau penyedia tile. Unduhan nyata dan tampilan peta diperiksa terpisah.
