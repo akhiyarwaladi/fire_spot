@@ -1,0 +1,6 @@
+cluster,detections,latitude,longitude,mean_frp_mw,max_frp_mw,first_date,last_date,active_dates,provinces
+2,1778,-3.628853655793026,105.43797613610798,9.477294713160855,40.87,2026-10-21,2026-10-27,6,"Bangka_Belitung, Bengkulu, Lampung, Sumatera_Selatan"
+0,1527,-3.297021231172233,105.43370854616897,2.9849770792403407,34.29,2026-10-21,2026-10-27,7,"Bangka_Belitung, Bengkulu, Lampung, Sumatera_Selatan"
+1,981,-1.8072601529051988,103.96405163098879,2.401427115188583,20.92,2026-10-21,2026-10-27,7,"Aceh, Bangka_Belitung, Jambi, Riau, Sumatera_Selatan, Sumatera_Utara"
+4,740,-2.1312123108108105,104.07272587837838,9.190635135135135,45.78,2026-10-21,2026-10-27,7,"Bangka_Belitung, Bengkulu, Jambi, Kepulauan_Riau, Sumatera_Selatan"
+3,90,-3.3961025555555553,105.23639111111112,76.78277777777778,245.57,2026-10-21,2026-10-24,4,"Bangka_Belitung, Jambi, Lampung, Sumatera_Selatan"

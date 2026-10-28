@@ -1,0 +1,37 @@
+{
+  "dataset": "viirs_noaa21_southeast_asia_7d.csv",
+  "region": "sumatra",
+  "method": "kmeans",
+  "period_start": "2026-10-21",
+  "period_end": "2026-10-27",
+  "confidence": "nominal/high (jika kolom tersedia)",
+  "n_points": 5116,
+  "n_clusters": 5,
+  "features": [
+    "latitude",
+    "longitude",
+    "brightness",
+    "frp"
+  ],
+  "random_state": 42,
+  "n_init": 10,
+  "silhouette": 0.3457179379251967,
+  "silhouette_sample_size": 2000,
+  "davies_bouldin": 0.9975377521061338,
+  "inertia": 7984.136798544885,
+  "indonesia_detections": 38232,
+  "sumatra_detections": 5116,
+  "kalimantan_detections": 22210,
+  "sumatra_share_pct": 13.3814605566018,
+  "source": {
+    "product": "VIIRS NOAA-21 Collection 2, 375 m, near real-time",
+    "region": "Southeast Asia",
+    "source_url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_SouthEast_Asia_7d.csv",
+    "downloaded_at_utc": "2026-10-28T15:40:39+00:00",
+    "last_modified": "Wed, 28 Oct 2026 14:45:39 GMT",
+    "observed_from_utc": "2026-10-21T03:06:00+00:00",
+    "observed_to_utc": "2026-10-27T20:34:00+00:00",
+    "rows": 58158,
+    "sha256": "db7b152a2643897047ac3c33bd6f9bdca0c7d58a470d9ed34741457baf4261e8"
+  }
+}

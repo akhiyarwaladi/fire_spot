@@ -5,3 +5,4 @@
 .gitignore text eol=lf
 .gitattributes text eol=lf
 data/raw/*.csv -text
+output/**/*.html text eol=lf

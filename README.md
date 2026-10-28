@@ -110,7 +110,7 @@ data/
     viirs_noaa21_southeast_asia_7d.csv
     viirs_noaa21_southeast_asia_7d.source.json
 tests/
-output/                    # Hasil yang dibuat program; diabaikan Git
+output/                    # Contoh hasil analisis yang disertakan dalam repositori
   sumatra/
     detections.csv         # Data valid, provinsi, dan label kelompok
     clusters.csv           # Jumlah deteksi, pusat, FRP, dan tanggal per kelompok
@@ -128,7 +128,13 @@ output/                    # Hasil yang dibuat program; diabaikan Git
       heatmap.html
 ```
 
-Nama berkas hasil memakai huruf kecil dengan pemisah garis bawah. Program menyimpan hasil filter, peta, dan grafik di `output/`. Analisis untuk wilayah dan folder hasil yang sama akan menimpa hasil sebelumnya. Gunakan `--output-dir` berbeda untuk membandingkan nilai K.
+Contoh hasil Sumatra dan Jambi disertakan di `output/`, termasuk peta HTML, grafik PNG, laporan, dan CSV pendukung. Grafik dapat dilihat langsung di GitHub. Untuk membuka peta HTML interaktif, unduh atau klon repositori, lalu jalankan server lokal seperti pada bagian Mulai.
+
+![Sebaran kelompok K-Means, jumlah deteksi harian, dan jumlah deteksi per provinsi di Sumatra](output/sumatra/charts/overview.png)
+
+![Kurva elbow dan skor silhouette untuk pilihan K pada data Sumatra](output/sumatra/charts/elbow.png)
+
+Nama berkas hasil memakai huruf kecil dengan pemisah garis bawah. Analisis untuk wilayah dan folder hasil yang sama akan menimpa hasil sebelumnya. Gunakan `--output-dir` berbeda untuk membandingkan nilai K.
 
 `clusters.csv` merangkum setiap kelompok; `detections.csv` menyimpan seluruh deteksi beserta labelnya.
 
